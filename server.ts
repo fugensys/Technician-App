@@ -302,6 +302,37 @@ function filterOrdersForTechnician(orders: WooCommerceOrder[], techEmail?: strin
 // API ENDPOINTS
 // -------------------------------------------------------------
 
+// Auto-seed technicians into Supabase if the table exists but is empty
+async function ensureSupabaseTechniciansSeeded(supabaseClient: any): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseClient.from('technicians').select('id').limit(1);
+    if (!error) {
+      if (!data || data.length === 0) {
+        console.log('[Supabase Seed] "technicians" table is empty. Auto-seeding default technicians...');
+        const { error: insertError } = await supabaseClient.from('technicians').insert([
+          { email: 'ereshmb@gmail.com', password_hash: '10001', name: 'Eresh M B', phone: '+1 (555) 012-1001', role: 'Technician' },
+          { email: 'decentsachin.143@gmail.com', password_hash: '10002', name: 'Sachin', phone: '+1 (555) 012-1002', role: 'Technician' },
+          { email: 'nidhishri767@gmail.com', password_hash: '10003', name: 'Nidhishri', phone: '+1 (555) 012-1003', role: 'Technician' }
+        ]);
+        if (insertError) {
+          console.error('[Supabase Seed] Insertion failed:', insertError.message);
+          return false;
+        } else {
+          console.log('[Supabase Seed] Seeding completed successfully!');
+          return true;
+        }
+      }
+      return false; // Already populated
+    } else {
+      console.log(`[Supabase Seed] Table check returned error (code: ${error.code}): ${error.message}`);
+      return false;
+    }
+  } catch (err: any) {
+    console.error('[Supabase Seed] Error during auto-seed:', err.message || err);
+    return false;
+  }
+}
+
 // POST /api/login for Technician authentication
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
@@ -317,6 +348,10 @@ app.post('/api/login', async (req, res) => {
   if (SUPABASE_URL && SUPABASE_ANON_KEY) {
     try {
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      
+      // Auto-seed table if it exists and is empty
+      await ensureSupabaseTechniciansSeeded(supabase);
+
       const { data, error } = await supabase
         .from('technicians')
         .select('*')
@@ -393,18 +428,18 @@ app.post('/api/test-supabase', async (req, res) => {
     console.log(`[Supabase Test] Initializing client for ${SUPABASE_URL}`);
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Test connection by fetching from an arbitrary table (or we can query standard auth session, which is always accessible)
+    // Run auto-seed check first
+    const seeded = await ensureSupabaseTechniciansSeeded(supabase);
+
+    // Test connection by fetching from technicians table
     const { error } = await supabase.from('technicians').select('*').limit(1);
 
     if (error) {
-      // In PostgreSQL/PostgREST, if we receive PGRST116 (no rows), 42P01 (relation/table does not exist), 
-      // or similar, it means we DID successfully connect and authenticate!
-      // But if we receive an invalid apiKey or JWT signature, it's an authentication error.
       if (error.code === '42P01') {
         return res.json({
           success: true,
           configured: true,
-          message: `Successfully connected and authenticated with Supabase! Note: The table 'technicians' does not exist yet (error 42P01), which is normal for a fresh instance. Your credentials are 100% valid.`
+          message: `Successfully connected and authenticated with Supabase! Note: The table 'technicians' does not exist yet (error 42P01). Please run the SQL queries in 'src/db_schema.sql' inside your Supabase SQL Editor to initialize all tables.`
         });
       } else if (error.code === 'PGRST301' || error.message.toLowerCase().includes('apikey') || error.message.toLowerCase().includes('jwt')) {
         return res.json({
@@ -424,7 +459,9 @@ app.post('/api/test-supabase', async (req, res) => {
     return res.json({
       success: true,
       configured: true,
-      message: `Successfully connected to Supabase! The project is reachable and you can successfully fetch data from the database.`
+      message: seeded 
+        ? `Successfully connected to Supabase and auto-seeded the default technicians into the 'technicians' table!` 
+        : `Successfully connected and authenticated with Supabase! Your technicians database has been verified.`
     });
   } catch (err: any) {
     console.error('[Supabase Test] Critical exception:', err);

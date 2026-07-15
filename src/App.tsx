@@ -912,7 +912,7 @@ export default function App() {
                           )}
                           <div className="space-y-1">
                             <p className="font-bold">{supabaseTestResult.success ? 'Supabase Sync Passed' : 'Supabase Sync Failed'}</p>
-                            <p className="text-[11px] opacity-90 leading-relaxed">{supabaseTestResult.message}</p>
+                            <p className="text-[11px] opacity-90 leading-relaxed whitespace-pre-wrap">{supabaseTestResult.message}</p>
                           </div>
                         </div>
                       )}
