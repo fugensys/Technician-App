@@ -6,13 +6,8 @@
 export type JobStatus =
   | 'Assigned'
   | 'Accepted'
-  | 'Travelling'
-  | 'Reached'
-  | 'Inspection'
-  | 'Installing'
-  | 'Gas Charging'
-  | 'Testing'
-  | 'Completed'
+  | 'In Progress'
+  | 'On Hold'
   | 'Closed'
   | 'Rejected';
 
@@ -51,6 +46,7 @@ export interface WooCommerceOrder {
   signature: string | null;
   completed_at: string | null;
   created_at: string;
+  accepted_by_email?: string; // Track which technician accepted this order
 }
 
 export interface AppStats {

@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 import { WooCommerceOrder, JobStatus, OrderNote, MaterialItem } from './src/types';
 
 dotenv.config();
@@ -64,7 +65,7 @@ const INITIAL_ORDERS: WooCommerceOrder[] = [
     payment_status: 'Cash on Delivery',
     service_type: 'AC Gas Refilling & Servicing',
     products: ['R410A Refrigerant Refill', 'General Filter Cleaning & Coil Wash'],
-    technician_status: 'Travelling',
+    technician_status: 'In Progress',
     notes: [
       {
         id: '1',
@@ -84,6 +85,7 @@ const INITIAL_ORDERS: WooCommerceOrder[] = [
     signature: null,
     completed_at: null,
     created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
+    accepted_by_email: 'ereshmb@gmail.com',
   },
   {
     id: 1203,
@@ -229,17 +231,131 @@ async function syncToWooCommerce(
 }
 
 // -------------------------------------------------------------
+// TECHNICIAN DATABASE & AUTHENTICATION (MANUAL TECHNICAL USERS)
+// -------------------------------------------------------------
+const AUTHORIZED_TECHNICIANS = [
+  { email: 'ereshmb@gmail.com', name: 'Eresh M B', password_hash: '10001' },
+  { email: 'decentsachin.143@gmail.com', name: 'Sachin', password_hash: '10002' },
+  { email: 'nidhishri767@gmail.com', name: 'Nidhishri', password_hash: '10003' }
+];
+
+// Helper to filter orders for a specific logged-in technician
+function filterOrdersForTechnician(orders: WooCommerceOrder[], techEmail?: string): WooCommerceOrder[] {
+  if (!techEmail || techEmail.trim() === '') {
+    return orders; // If no user email is active, show everything (unauthenticated / admin overview)
+  }
+  const emailLower = techEmail.trim().toLowerCase();
+  return orders.filter(order => {
+    // 1. Show all 'Assigned' (unclaimed) orders so any tech can claim them
+    if (order.technician_status === 'Assigned') {
+      return true;
+    }
+    // 2. Show if the order was accepted by this specific technician
+    return order.accepted_by_email && order.accepted_by_email.trim().toLowerCase() === emailLower;
+  });
+}
+
+// -------------------------------------------------------------
 // API ENDPOINTS
 // -------------------------------------------------------------
 
+// POST /api/login for Technician authentication
+app.post('/api/login', (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and numeric password are required' });
+  }
+
+  const tech = AUTHORIZED_TECHNICIANS.find(
+    t => t.email.toLowerCase() === email.trim().toLowerCase() && t.password_hash === password.trim()
+  );
+
+  if (tech) {
+    return res.json({
+      success: true,
+      user: {
+        email: tech.email,
+        name: tech.name,
+        role: 'Technician'
+      }
+    });
+  } else {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid technician credentials. Please use your manual email and 5-digit password serial.'
+    });
+  }
+});
+
 // Health check and WooCommerce configuration status check
 app.get('/api/config-status', (req, res) => {
-  const { WOOCOMMERCE_API_URL, WOOCOMMERCE_CONSUMER_KEY, WOOCOMMERCE_CONSUMER_SECRET } = process.env;
+  const { WOOCOMMERCE_API_URL, WOOCOMMERCE_CONSUMER_KEY, WOOCOMMERCE_CONSUMER_SECRET, SUPABASE_URL, SUPABASE_ANON_KEY } = process.env;
   res.json({
     hasWooCommerceConfigured: Boolean(WOOCOMMERCE_API_URL && WOOCOMMERCE_CONSUMER_KEY && WOOCOMMERCE_CONSUMER_SECRET),
     wooCommerceUrl: WOOCOMMERCE_API_URL || 'Not configured',
     hasGoogleMapsConfigured: Boolean(process.env.GOOGLE_MAPS_PLATFORM_KEY),
+    hasSupabaseConfigured: Boolean(SUPABASE_URL && SUPABASE_ANON_KEY),
+    supabaseUrl: SUPABASE_URL || 'Not configured',
   });
+});
+
+// POST test-supabase to verify Supabase credentials and reachability
+app.post('/api/test-supabase', async (req, res) => {
+  const { SUPABASE_URL, SUPABASE_ANON_KEY } = process.env;
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return res.json({
+      success: false,
+      configured: false,
+      message: 'Supabase URL or Anon Key is missing from your environment variables. Please add SUPABASE_URL and SUPABASE_ANON_KEY under Settings -> Secrets.'
+    });
+  }
+
+  try {
+    console.log(`[Supabase Test] Initializing client for ${SUPABASE_URL}`);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Test connection by fetching from an arbitrary table (or we can query standard auth session, which is always accessible)
+    const { error } = await supabase.from('technicians').select('*').limit(1);
+
+    if (error) {
+      // In PostgreSQL/PostgREST, if we receive PGRST116 (no rows), 42P01 (relation/table does not exist), 
+      // or similar, it means we DID successfully connect and authenticate!
+      // But if we receive an invalid apiKey or JWT signature, it's an authentication error.
+      if (error.code === '42P01') {
+        return res.json({
+          success: true,
+          configured: true,
+          message: `Successfully connected and authenticated with Supabase! Note: The table 'technicians' does not exist yet (error 42P01), which is normal for a fresh instance. Your credentials are 100% valid.`
+        });
+      } else if (error.code === 'PGRST301' || error.message.toLowerCase().includes('apikey') || error.message.toLowerCase().includes('jwt')) {
+        return res.json({
+          success: false,
+          configured: true,
+          message: `Authentication failed (Code ${error.code}). Your SUPABASE_ANON_KEY appears to be invalid: ${error.message}`
+        });
+      } else {
+        return res.json({
+          success: false,
+          configured: true,
+          message: `Supabase returned an error (Code ${error.code}): ${error.message}`
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      configured: true,
+      message: `Successfully connected to Supabase! The project is reachable and you can successfully fetch data from the database.`
+    });
+  } catch (err: any) {
+    console.error('[Supabase Test] Critical exception:', err);
+    return res.json({
+      success: false,
+      configured: true,
+      message: `Failed to connect to Supabase: ${err.message || err}`
+    });
+  }
 });
 
 // POST test-connection to verify WooCommerce credentials and reachability
@@ -303,6 +419,7 @@ app.post('/api/test-connection', async (req, res) => {
 
 // GET all orders with real-time WooCommerce integration & merging
 app.get('/api/orders', async (req, res) => {
+  const techEmail = req.query.tech_email as string | undefined;
   try {
     const localOrders = loadOrders();
     const { WOOCOMMERCE_API_URL, WOOCOMMERCE_CONSUMER_KEY, WOOCOMMERCE_CONSUMER_SECRET } = process.env;
@@ -310,7 +427,7 @@ app.get('/api/orders', async (req, res) => {
     // If WooCommerce is not configured, return local orders (interactive simulation sandbox mode)
     if (!WOOCOMMERCE_API_URL || !WOOCOMMERCE_CONSUMER_KEY || !WOOCOMMERCE_CONSUMER_SECRET) {
       console.log('[WooCommerce Sim] Active. Returning persistent local simulated orders.');
-      return res.json(localOrders);
+      return res.json(filterOrdersForTechnician(localOrders, techEmail));
     }
 
     // WooCommerce is configured! Attempt to fetch live orders from the WooCommerce REST API.
@@ -479,11 +596,11 @@ app.get('/api/orders', async (req, res) => {
     // Save the merged data to the store file so updates by the technician are kept safe
     saveOrders(finalOrders);
 
-    return res.json(finalOrders);
+    return res.json(filterOrdersForTechnician(finalOrders, techEmail));
   } catch (err: any) {
     console.error('[WooCommerce Pull] Critical error, returning local database as fallback:', err);
     const localOrders = loadOrders();
-    return res.json(localOrders);
+    return res.json(filterOrdersForTechnician(localOrders, techEmail));
   }
 });
 
@@ -501,6 +618,7 @@ app.get('/api/orders/:id', (req, res) => {
 // POST Accept order
 app.post('/api/orders/:id/accept', async (req, res) => {
   const id = parseInt(req.params.id);
+  const { email } = req.body;
   const orders = loadOrders();
   const index = orders.findIndex(o => o.id === id);
 
@@ -510,12 +628,15 @@ app.post('/api/orders/:id/accept', async (req, res) => {
 
   const order = orders[index];
   order.technician_status = 'Accepted';
+  if (email) {
+    order.accepted_by_email = email;
+  }
   
   const timestamp = new Date().toISOString();
   const newNote: OrderNote = {
     id: `note-${Date.now()}`,
-    author: 'Technician (Self)',
-    message: 'Technician accepted this service request. Job added to Accepted List.',
+    author: email ? `Technician (${email})` : 'Technician (Self)',
+    message: `Technician accepted this service request. Job assigned to ${email || 'Self'}.`,
     timestamp,
   };
   order.notes.push(newNote);
@@ -523,7 +644,7 @@ app.post('/api/orders/:id/accept', async (req, res) => {
   saveOrders(orders);
 
   // Sync to WooCommerce (Updates order note and changes WooCommerce status to 'processing' or 'assigned')
-  await syncToWooCommerce(id, 'processing', 'Technician accepted this service request.');
+  await syncToWooCommerce(id, 'processing', `Technician (${email || 'Self'}) accepted this service request.`);
 
   res.json({ success: true, order });
 });
@@ -572,8 +693,7 @@ app.post('/api/orders/:id/status', async (req, res) => {
   }
 
   const validStatuses: JobStatus[] = [
-    'Assigned', 'Accepted', 'Travelling', 'Reached', 'Inspection', 
-    'Installing', 'Gas Charging', 'Testing', 'Completed', 'Closed'
+    'Assigned', 'Accepted', 'In Progress', 'On Hold', 'Closed', 'Rejected'
   ];
 
   if (!validStatuses.includes(status)) {
@@ -586,14 +706,11 @@ app.post('/api/orders/:id/status', async (req, res) => {
   const timestamp = new Date().toISOString();
   let readableStatus = '';
   switch (status) {
-    case 'Travelling': readableStatus = 'is travelling on way to customer location'; break;
-    case 'Reached': readableStatus = 'reached customer location'; break;
-    case 'Inspection': readableStatus = 'started inspection of the AC system'; break;
-    case 'Installing': readableStatus = 'started installation/servicing work'; break;
-    case 'Gas Charging': readableStatus = 'is charging/refilling refrigerant gas'; break;
-    case 'Testing': readableStatus = 'initiated final testing and air velocity check'; break;
-    case 'Completed': readableStatus = 'successfully completed all services and work'; break;
+    case 'Accepted': readableStatus = 'accepted the order'; break;
+    case 'In Progress': readableStatus = 'started work (In Progress)'; break;
+    case 'On Hold': readableStatus = 'placed the service on hold'; break;
     case 'Closed': readableStatus = 'closed the service ticket'; break;
+    case 'Rejected': readableStatus = 'rejected the order'; break;
     default: readableStatus = `updated status to "${status}"`; break;
   }
 
@@ -605,7 +722,7 @@ app.post('/api/orders/:id/status', async (req, res) => {
   };
   order.notes.push(newNote);
 
-  if (status === 'Completed') {
+  if (status === 'Closed') {
     order.completed_at = timestamp;
   }
 
@@ -613,7 +730,7 @@ app.post('/api/orders/:id/status', async (req, res) => {
 
   // Map to WooCommerce standard statuses
   let wcStatus = 'processing';
-  if (status === 'Completed' || status === 'Closed') {
+  if (status === 'Closed') {
     wcStatus = 'completed';
   }
 
@@ -649,7 +766,7 @@ app.post('/api/orders/:id/notes', async (req, res) => {
   saveOrders(orders);
 
   // Sync notes directly to WooCommerce
-  await syncToWooCommerce(id, order.technician_status === 'Completed' || order.technician_status === 'Closed' ? 'completed' : 'processing', `Technician Note: ${message}`);
+  await syncToWooCommerce(id, order.technician_status === 'Closed' ? 'completed' : 'processing', `Technician Note: ${message}`);
 
   res.json({ success: true, note: newNote });
 });
@@ -747,11 +864,22 @@ app.post('/api/orders/:id/close', async (req, res) => {
 // GET App Dashboard stats
 app.get('/api/stats', (req, res) => {
   const orders = loadOrders();
+  const techEmail = req.query.tech_email as string | undefined;
+
+  let filteredOrders = orders;
+  if (techEmail && techEmail.trim() !== '') {
+    const emailLower = techEmail.trim().toLowerCase();
+    filteredOrders = orders.filter(o =>
+      o.technician_status === 'Assigned' ||
+      (o.accepted_by_email && o.accepted_by_email.toLowerCase() === emailLower)
+    );
+  }
+
   const stats = {
-    assigned: orders.filter(o => o.technician_status === 'Assigned').length,
-    accepted: orders.filter(o => o.technician_status !== 'Assigned' && o.technician_status !== 'Rejected' && o.technician_status !== 'Closed').length,
-    completed: orders.filter(o => o.technician_status === 'Closed' || o.technician_status === 'Completed').length,
-    rejected: orders.filter(o => o.technician_status === 'Rejected').length,
+    assigned: filteredOrders.filter(o => o.technician_status === 'Assigned').length,
+    accepted: filteredOrders.filter(o => o.technician_status !== 'Assigned' && o.technician_status !== 'Rejected' && o.technician_status !== 'Closed').length,
+    completed: filteredOrders.filter(o => o.technician_status === 'Closed').length,
+    rejected: filteredOrders.filter(o => o.technician_status === 'Rejected').length,
   };
   res.json(stats);
 });

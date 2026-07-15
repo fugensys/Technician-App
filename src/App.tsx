@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   APIProvider,
   Map,
@@ -53,6 +53,17 @@ export default function App() {
   const [selectedOrder, setSelectedOrder] = useState<WooCommerceOrder | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'assigned' | 'active' | 'completed' | 'config'>('dashboard');
   
+  // Technician user authentication state (from localStorage)
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string; role: string } | null>(() => {
+    const saved = localStorage.getItem('ac_tech_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loggingIn, setLoggingIn] = useState(false);
+  
   // Technician local statuses
   const [technicianStatus, setTechnicianStatus] = useState<'Online' | 'Offline'>('Online');
   const [rejectionModalId, setRejectionModalId] = useState<number | null>(null);
@@ -65,23 +76,28 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
-  // WooCommerce connection state info
+  // WooCommerce & Supabase connection state info
   const [configStatus, setConfigStatus] = useState({
     hasWooCommerceConfigured: false,
     wooCommerceUrl: '',
-    hasGoogleMapsConfigured: false
+    hasGoogleMapsConfigured: false,
+    hasSupabaseConfigured: false,
+    supabaseUrl: ''
   });
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  const [testingSupabase, setTestingSupabase] = useState(false);
+  const [supabaseTestResult, setSupabaseTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch initial configuration & orders
+  // Fetch initial configuration & orders on change of technician user context
   useEffect(() => {
-    fetchConfigAndOrders();
-  }, []);
+    fetchConfigAndOrders(currentUser ? currentUser.email : null);
+  }, [currentUser]);
 
   const handleTestConnection = async () => {
     try {
@@ -116,7 +132,40 @@ export default function App() {
     }
   };
 
-  const fetchConfigAndOrders = async () => {
+  const handleTestSupabase = async () => {
+    try {
+      setTestingSupabase(true);
+      setSupabaseTestResult(null);
+      const res = await fetch('/api/test-supabase', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setSupabaseTestResult({
+          success: data.success,
+          message: data.message
+        });
+        // refresh config
+        const configRes = await fetch('/api/config-status');
+        if (configRes.ok) {
+          const configData = await configRes.json();
+          setConfigStatus(configData);
+        }
+      } else {
+        setSupabaseTestResult({
+          success: false,
+          message: `Server responded with an error code: ${res.status} ${res.statusText}`
+        });
+      }
+    } catch (err: any) {
+      setSupabaseTestResult({
+        success: false,
+        message: `Failed to contact the server: ${err.message || err}`
+      });
+    } finally {
+      setTestingSupabase(false);
+    }
+  };
+
+  const fetchConfigAndOrders = async (techEmail?: string | null) => {
     try {
       setLoading(true);
       setError(null);
@@ -127,7 +176,11 @@ export default function App() {
         setConfigStatus(configData);
       }
 
-      const ordersRes = await fetch('/api/orders');
+      // Check active technician email to query filtered list
+      const emailQuery = techEmail !== undefined ? techEmail : (currentUser ? currentUser.email : null);
+      const url = emailQuery ? `/api/orders?tech_email=${encodeURIComponent(emailQuery)}` : '/api/orders';
+
+      const ordersRes = await fetch(url);
       if (ordersRes.ok) {
         const ordersData = await ordersRes.json();
         setOrders(ordersData);
@@ -147,7 +200,7 @@ export default function App() {
     setStats({
       assigned: ordersList.filter(o => o.technician_status === 'Assigned').length,
       accepted: ordersList.filter(o => o.technician_status !== 'Assigned' && o.technician_status !== 'Rejected' && o.technician_status !== 'Closed').length,
-      completed: ordersList.filter(o => o.technician_status === 'Closed' || o.technician_status === 'Completed').length,
+      completed: ordersList.filter(o => o.technician_status === 'Closed').length,
       rejected: ordersList.filter(o => o.technician_status === 'Rejected').length,
     });
   };
@@ -178,7 +231,11 @@ export default function App() {
   // Accept Order Workflow
   const handleAcceptOrder = async (orderId: number) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/accept`, { method: 'POST' });
+      const res = await fetch(`/api/orders/${orderId}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentUser ? currentUser.email : '' })
+      });
       if (res.ok) {
         const { order } = await res.json();
         // Update local arrays
@@ -331,6 +388,41 @@ export default function App() {
     }
   };
 
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setLoggingIn(true);
+      setLoginError(null);
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user);
+        localStorage.setItem('ac_tech_user', JSON.stringify(data.user));
+        // Clear old inputs
+        setLoginEmail('');
+        setLoginPassword('');
+      } else {
+        const errData = await res.json();
+        setLoginError(errData.error || 'Authentication failed');
+      }
+    } catch (err: any) {
+      setLoginError('Could not contact authentication server.');
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('ac_tech_user');
+    setOrders([]);
+    setSelectedOrder(null);
+  };
+
   // Search and filter orders
   const filteredOrders = orders.filter(o => {
     const matchesSearch =
@@ -344,6 +436,108 @@ export default function App() {
     if (statusFilter === 'all') return true;
     return o.technician_status === statusFilter;
   });
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center items-center font-sans px-4 py-12 selection:bg-indigo-500 selection:text-white antialiased">
+        <div className="w-full max-w-md space-y-8 animate-fadeIn">
+          {/* Logo / Brand Header */}
+          <div className="text-center">
+            <div className="inline-flex w-16 h-16 bg-indigo-600 rounded-2xl items-center justify-center text-white font-black shadow-lg shadow-indigo-950/50 mb-4 border border-indigo-500/30">
+              <Wrench className="w-8 h-8 text-indigo-100" />
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-white">AC Technician Portal</h1>
+            <p className="text-xs text-slate-400 mt-2">Sign in using your authorized technical user account</p>
+          </div>
+
+          {/* Login Card */}
+          <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-6">
+            {loginError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl flex items-start space-x-2 animate-shake">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@example.com"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">5-Digit Password</label>
+                <input
+                  type="password"
+                  required
+                  maxLength={5}
+                  placeholder="•••••"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loggingIn}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md active:scale-95 disabled:opacity-55"
+              >
+                {loggingIn ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mr-1.5" />
+                    <span>Signing In...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Enter Portal</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="border-t border-slate-800/80 pt-4">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-3 text-center">Authorized Sandbox Users</span>
+              <div className="space-y-2.5">
+                {[
+                  { email: 'ereshmb@gmail.com', pass: '10001', name: 'Eresh M B' },
+                  { email: 'decentsachin.143@gmail.com', pass: '10002', name: 'Sachin' },
+                  { email: 'nidhishri767@gmail.com', pass: '10003', name: 'Nidhishri' }
+                ].map((u) => (
+                  <button
+                    key={u.email}
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail(u.email);
+                      setLoginPassword(u.pass);
+                      setLoginError(null);
+                    }}
+                    className="w-full text-left bg-slate-900 hover:bg-slate-850 p-2.5 rounded-xl border border-slate-800/60 transition-all hover:border-slate-700 flex items-center justify-between text-xs group"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">{u.name}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{u.email}</p>
+                    </div>
+                    <span className="text-[10px] font-mono bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">
+                      Pass: {u.pass}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white antialiased">
@@ -361,7 +555,7 @@ export default function App() {
                 <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded font-mono">PWA</span>
               </h1>
               <p className="text-[10px] text-slate-400 font-medium flex items-center space-x-1">
-                <span>Rahul (Senior Tech)</span>
+                <span className="text-indigo-300 font-semibold">{currentUser ? currentUser.name : ' राहुल '}</span>
                 <span className="text-slate-600">•</span>
                 <span className={`inline-block w-1.5 h-1.5 rounded-full ${technicianStatus === 'Online' ? 'bg-emerald-500' : 'bg-slate-500'}`} />
                 <span>{technicianStatus}</span>
@@ -380,17 +574,17 @@ export default function App() {
               }`}
             >
               {technicianStatus === 'Online' ? <Wifi className="w-3.5 h-3.5 mr-1" /> : <WifiOff className="w-3.5 h-3.5 mr-1" />}
-              <span>{technicianStatus === 'Online' ? 'Go Offline' : 'Go Online'}</span>
+              <span className="hidden sm:inline">{technicianStatus === 'Online' ? 'Go Offline' : 'Go Online'}</span>
             </button>
 
-            {/* WooCommerce status bar */}
-            <div className="hidden sm:flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px]">
-              <span className={`inline-block w-2 h-2 rounded-full ${configStatus.hasWooCommerceConfigured ? 'bg-emerald-500' : 'bg-indigo-500 animate-pulse'}`} />
-              <span className="text-slate-400 font-medium">WooCommerce:</span>
-              <span className="text-slate-200 font-semibold max-w-[120px] truncate">
-                {configStatus.hasWooCommerceConfigured ? 'Live Connected' : 'Simulator Active'}
-              </span>
-            </div>
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="text-xs bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg font-semibold border border-slate-700 transition-all flex items-center space-x-1"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </header>
@@ -559,7 +753,7 @@ export default function App() {
                   </div>
 
                   {/* WooCommerce status info */}
-                  <div className="bg-slate-900/60 rounded-xl p-4 border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-slate-900/60 rounded-xl p-4 border border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     <div className="space-y-1">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">WooCommerce REST Sync</span>
                       <div className="flex items-center space-x-2">
@@ -589,58 +783,128 @@ export default function App() {
                           : 'Standard embedded iframe coordinate visualization is active. Provide key to activate advanced marker paths.'}
                       </p>
                     </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Supabase Integration</span>
+                      <div className="flex items-center space-x-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${configStatus.hasSupabaseConfigured ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                        <span className="text-sm font-semibold text-white">
+                          {configStatus.hasSupabaseConfigured ? 'Active Database Sync' : 'Simulated Sandbox Mode'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 max-w-sm">
+                        {configStatus.hasSupabaseConfigured
+                          ? `Connected to Supabase project: ${configStatus.supabaseUrl}`
+                          : 'Currently using persistent mock database because Supabase environment variables are not configured.'}
+                      </p>
+                    </div>
                   </div>
 
                   {/* Connection Test Trigger & Results */}
-                  <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
-                          <Activity className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>Live Connection Check</span>
-                        </h3>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Perform a live diagnostic check of the WordPress WooCommerce REST API integration.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* WooCommerce Test */}
+                    <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
+                            <Activity className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>WooCommerce REST check</span>
+                          </h3>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Perform a diagnostic check of WooCommerce REST API integration.</p>
+                        </div>
+                        <button
+                          onClick={handleTestConnection}
+                          disabled={testingConnection}
+                          className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all flex items-center justify-center space-x-1.5 ${
+                            testingConnection
+                              ? 'bg-slate-850 text-slate-500 border-slate-800 cursor-not-allowed'
+                              : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500/30 hover:scale-[1.02] shadow-md shadow-indigo-950/40 active:scale-[0.98]'
+                          }`}
+                        >
+                          {testingConnection ? (
+                            <>
+                              <span className="inline-block w-3 h-3 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mr-1" />
+                              <span>Pinging...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Wifi className="w-3.5 h-3.5 mr-1" />
+                              <span>Test Store API</span>
+                            </>
+                          )}
+                        </button>
                       </div>
-                      <button
-                        onClick={handleTestConnection}
-                        disabled={testingConnection}
-                        className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all flex items-center justify-center space-x-1.5 ${
-                          testingConnection
-                            ? 'bg-slate-850 text-slate-500 border-slate-800 cursor-not-allowed'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500/30 hover:scale-[1.02] shadow-md shadow-indigo-950/40 active:scale-[0.98]'
-                        }`}
-                      >
-                        {testingConnection ? (
-                          <>
-                            <span className="inline-block w-3 h-3 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mr-1" />
-                            <span>Pinging Store...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Wifi className="w-3.5 h-3.5 mr-1" />
-                            <span>Check WooCommerce API</span>
-                          </>
-                        )}
-                      </button>
+
+                      {testResult && (
+                        <div className={`p-3.5 rounded-xl border text-xs flex items-start space-x-2.5 animate-fadeIn ${
+                          testResult.success
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                            : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                        }`}>
+                          {testResult.success ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+                          )}
+                          <div className="space-y-1">
+                            <p className="font-bold">{testResult.success ? 'Store Sync Passed' : 'Store Sync Failed'}</p>
+                            <p className="text-[11px] opacity-90 leading-relaxed">{testResult.message}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {testResult && (
-                      <div className={`p-3.5 rounded-xl border text-xs flex items-start space-x-2.5 animate-fadeIn ${
-                        testResult.success
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                          : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                      }`}>
-                        {testResult.success ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                        ) : (
-                          <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
-                        )}
-                        <div className="space-y-1">
-                          <p className="font-bold">{testResult.success ? 'Diagnostic Connection Passed' : 'Diagnostic Connection Failed'}</p>
-                          <p className="text-[11px] opacity-90 leading-relaxed">{testResult.message}</p>
+                    {/* Supabase Test */}
+                    <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
+                            <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>Supabase DB Check</span>
+                          </h3>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Perform a diagnostic ping and authentication check of Supabase database connection.</p>
                         </div>
+                        <button
+                          onClick={handleTestSupabase}
+                          disabled={testingSupabase}
+                          className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all flex items-center justify-center space-x-1.5 ${
+                            testingSupabase
+                              ? 'bg-slate-850 text-slate-500 border-slate-800 cursor-not-allowed'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500/30 hover:scale-[1.02] shadow-md shadow-indigo-950/40 active:scale-[0.98]'
+                          }`}
+                        >
+                          {testingSupabase ? (
+                            <>
+                              <span className="inline-block w-3 h-3 border-2 border-emerald-200 border-t-transparent rounded-full animate-spin mr-1" />
+                              <span>Connecting...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Wifi className="w-3.5 h-3.5 mr-1" />
+                              <span>Test Supabase</span>
+                            </>
+                          )}
+                        </button>
                       </div>
-                    )}
+
+                      {supabaseTestResult && (
+                        <div className={`p-3.5 rounded-xl border text-xs flex items-start space-x-2.5 animate-fadeIn ${
+                          supabaseTestResult.success
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                            : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                        }`}>
+                          {supabaseTestResult.success ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+                          )}
+                          <div className="space-y-1">
+                            <p className="font-bold">{supabaseTestResult.success ? 'Supabase Sync Passed' : 'Supabase Sync Failed'}</p>
+                            <p className="text-[11px] opacity-90 leading-relaxed">{supabaseTestResult.message}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Detailed setup instructions */}
@@ -666,12 +930,62 @@ export default function App() {
                           <li><code>WOOCOMMERCE_CONSUMER_KEY</code>: e.g. <code>ck_...</code></li>
                           <li><code>WOOCOMMERCE_CONSUMER_SECRET</code>: e.g. <code>cs_...</code></li>
                           <li><code>GOOGLE_MAPS_PLATFORM_KEY</code>: Your Google Maps API Key</li>
+                          <li><code>SUPABASE_URL</code>: Your Supabase Project API URL</li>
+                          <li><code>SUPABASE_ANON_KEY</code>: Your Supabase Public client key</li>
                         </ul>
                       </li>
                       <li>
                         Press <strong>Enter</strong>. The application container compiles, binds credentials securely backend-side, and restarts in 3 seconds!
                       </li>
                     </ol>
+                  </div>
+
+                  {/* Database Schema Visualizer */}
+                  <div className="space-y-3 bg-slate-900/30 p-5 rounded-xl border border-slate-800/50">
+                    <div className="flex items-center space-x-2 text-indigo-400">
+                      <Layers className="w-4 h-4" />
+                      <h3 className="text-xs font-bold uppercase tracking-wider">Designed Database Schema</h3>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Below is the PostgreSQL relational database schema diagram and seed statements designed for this portal. 
+                      This ensures full transactional tracking of service tickets, signatures, materials, and technician authorization:
+                    </p>
+                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 overflow-x-auto">
+                      <pre className="text-[10px] font-mono text-emerald-300/90 leading-relaxed select-all">
+{`-- PostgreSQL Database Schema Design for AC Technician Service Portal
+
+CREATE TABLE technicians (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL, -- 5-digit Numeric
+    name VARCHAR(255) NOT NULL,
+    role VARCHAR(50) DEFAULT 'Technician'
+);
+
+-- Seed Manual Technical Users
+INSERT INTO technicians (email, password_hash, name) VALUES
+('ereshmb@gmail.com', '10001', 'Eresh M B'),
+('decentsachin.143@gmail.com', '10002', 'Sachin'),
+('nidhishri767@gmail.com', '10003', 'Nidhishri');
+
+CREATE TABLE service_orders (
+    id INT PRIMARY KEY, -- Maps directly to WooCommerce Order ID
+    order_number VARCHAR(50) NOT NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(50) NOT NULL,
+    customer_address TEXT NOT NULL,
+    technician_status VARCHAR(50) DEFAULT 'Assigned', -- 'Assigned', 'Accepted', 'In Progress', 'On Hold', 'Closed'
+    accepted_by_email VARCHAR(255) REFERENCES technicians(email) ON DELETE SET NULL
+);
+
+CREATE TABLE order_notes (
+    id VARCHAR(100) PRIMARY KEY,
+    order_id INT REFERENCES service_orders(id) ON DELETE CASCADE,
+    author VARCHAR(100) NOT NULL,
+    message TEXT NOT NULL
+);`}
+                      </pre>
+                    </div>
                   </div>
                 </div>
               )}
@@ -935,20 +1249,17 @@ export default function App() {
                             
                             <div className="flex flex-wrap gap-1.5">
                               {[
-                                { status: 'Travelling', label: 'On Way' },
-                                { status: 'Reached', label: 'Reached' },
-                                { status: 'Inspection', label: 'Inspect' },
-                                { status: 'Installing', label: 'Installing' },
-                                { status: 'Gas Charging', label: 'Gas Refill' },
-                                { status: 'Testing', label: 'Testing' },
-                                { status: 'Completed', label: 'Work Complete' },
+                                { status: 'Accepted', label: 'Accepted' },
+                                { status: 'In Progress', label: 'In Progress' },
+                                { status: 'On Hold', label: 'On Hold' },
+                                { status: 'Closed', label: 'Closed' },
                               ].map((step) => {
                                 const isActive = selectedOrder.technician_status === step.status;
                                 return (
                                   <button
                                     key={step.status}
                                     onClick={() => handleUpdateStatus(selectedOrder.id, step.status as JobStatus)}
-                                    className={`text-xs px-2.5 py-1.5 rounded-lg font-bold border transition-all ${
+                                    className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all ${
                                       isActive
                                         ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
                                         : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
@@ -974,15 +1285,29 @@ export default function App() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Service Location & Address</h3>
-                      <a
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${selectedOrder.latitude},${selectedOrder.longitude}&travelmode=driving`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-indigo-400 hover:text-indigo-300 font-bold flex items-center space-x-1"
-                      >
-                        <Navigation className="w-3.5 h-3.5" />
-                        <span>Navigate App</span>
-                      </a>
+                      <div className="flex items-center space-x-3 text-xs">
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedOrder.customer_address)}&travelmode=driving`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-400 hover:text-indigo-300 font-bold flex items-center space-x-1"
+                          title="Open Google Maps Driving Directions"
+                        >
+                          <Navigation className="w-3.5 h-3.5" />
+                          <span>Get Directions</span>
+                        </a>
+                        <span className="text-slate-800">|</span>
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedOrder.customer_address)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-rose-400 hover:text-rose-300 font-bold flex items-center space-x-1"
+                          title="View on Google Maps Search"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span>Search GPS</span>
+                        </a>
+                      </div>
                     </div>
                     <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 text-xs leading-relaxed text-slate-300 flex items-start space-x-2">
                       <MapPin className="w-4 h-4 text-rose-500 mt-0.5 flex-shrink-0" />
