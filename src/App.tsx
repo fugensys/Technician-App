@@ -385,31 +385,17 @@ export default function App() {
 
             {/* WooCommerce status bar */}
             <div className="hidden sm:flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px]">
-              <span className={`inline-block w-2 h-2 rounded-full ${configStatus.hasWooCommerceConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className={`inline-block w-2 h-2 rounded-full ${configStatus.hasWooCommerceConfigured ? 'bg-emerald-500' : 'bg-indigo-500 animate-pulse'}`} />
               <span className="text-slate-400 font-medium">WooCommerce:</span>
               <span className="text-slate-200 font-semibold max-w-[120px] truncate">
-                {configStatus.hasWooCommerceConfigured ? 'Connected' : 'Simulating'}
+                {configStatus.hasWooCommerceConfigured ? 'Live Connected' : 'Simulator Active'}
               </span>
             </div>
           </div>
         </div>
       </header>
 
-      {/* 2. SUB-BAR: WOOCOMMERCE SYNC WARNING IF SIMULATING */}
-      {!configStatus.hasWooCommerceConfigured && (
-        <div id="woocommerce-notice" className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-[11px] text-amber-400 flex items-center justify-center space-x-1.5">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
-          <span>Using Local Interactive Simulator. To sync with your live WooCommerce store, configure credentials in Settings.</span>
-          <button
-            onClick={() => setActiveTab('config')}
-            className="underline font-bold text-amber-300 hover:text-amber-200 ml-1"
-          >
-            Setup Instructions
-          </button>
-        </div>
-      )}
-
-      {/* 3. MAIN CONTAINER */}
+      {/* 2. MAIN CONTAINER */}
       <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {loading ? (
