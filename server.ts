@@ -279,7 +279,8 @@ async function syncToWooCommerce(
 const AUTHORIZED_TECHNICIANS = [
   { email: 'ereshmb@gmail.com', name: 'Eresh M B', password_hash: '10001' },
   { email: 'decentsachin.143@gmail.com', name: 'Sachin', password_hash: '10002' },
-  { email: 'nidhishri767@gmail.com', name: 'Nidhishri', password_hash: '10003' }
+  { email: 'nidhishri767@gmail.com', name: 'Nidhishri', password_hash: '10003' },
+  { email: 'fugensys@gmail.com', name: 'Fugensys Admin', password_hash: '10004' }
 ];
 
 // Helper to filter orders for a specific logged-in technician
@@ -302,6 +303,9 @@ function filterOrdersForTechnician(orders: WooCommerceOrder[], techEmail?: strin
 // API ENDPOINTS
 // -------------------------------------------------------------
 
+// Flag to track if we detected Row-Level Security blocking us
+let supabaseRLSDetected = false;
+
 // Auto-seed technicians into Supabase if the table exists but is empty
 async function ensureSupabaseTechniciansSeeded(supabaseClient: any): Promise<boolean> {
   try {
@@ -316,9 +320,13 @@ async function ensureSupabaseTechniciansSeeded(supabaseClient: any): Promise<boo
         ]);
         if (insertError) {
           console.error('[Supabase Seed] Insertion failed:', insertError.message);
+          if (insertError.code === '42501' || insertError.message.toLowerCase().includes('security') || insertError.message.toLowerCase().includes('rls')) {
+            supabaseRLSDetected = true;
+          }
           return false;
         } else {
           console.log('[Supabase Seed] Seeding completed successfully!');
+          supabaseRLSDetected = false;
           return true;
         }
       }
@@ -454,6 +462,14 @@ app.post('/api/test-supabase', async (req, res) => {
           message: `Supabase returned an error (Code ${error.code}): ${error.message}`
         });
       }
+    }
+
+    if (supabaseRLSDetected) {
+      return res.json({
+        success: true,
+        configured: true,
+        message: `Successfully connected to Supabase, but Row-Level Security (RLS) is active on your 'technicians' table and is blocking client access!\n\nTo make your portal accounts and any custom accounts you add work, please execute the following command in your Supabase SQL Editor:\n\nALTER TABLE technicians DISABLE ROW LEVEL SECURITY;\n\n(Alternatively, create a SELECT policy allowing 'anon' public access).`
+      });
     }
 
     return res.json({

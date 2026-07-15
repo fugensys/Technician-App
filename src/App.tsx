@@ -522,7 +522,8 @@ export default function App() {
                 {[
                   { email: 'ereshmb@gmail.com', pass: '10001', name: 'Eresh M B' },
                   { email: 'decentsachin.143@gmail.com', pass: '10002', name: 'Sachin' },
-                  { email: 'nidhishri767@gmail.com', pass: '10003', name: 'Nidhishri' }
+                  { email: 'nidhishri767@gmail.com', pass: '10003', name: 'Nidhishri' },
+                  { email: 'fugensys@gmail.com', pass: '10004', name: 'Fugensys Admin' }
                 ].map((u) => (
                   <button
                     key={u.email}
