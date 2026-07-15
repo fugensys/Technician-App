@@ -76,6 +76,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
+  const [isIframe, setIsIframe] = useState(false);
+  useEffect(() => {
+    setIsIframe(window.self !== window.top);
+  }, []);
+  
   // WooCommerce & Supabase connection state info
   const [configStatus, setConfigStatus] = useState({
     hasWooCommerceConfigured: false,
@@ -458,16 +463,43 @@ export default function App() {
             <div className="inline-flex w-16 h-16 bg-indigo-600 rounded-2xl items-center justify-center text-white font-black shadow-lg shadow-indigo-950/50 mb-4 border border-indigo-500/30">
               <Wrench className="w-8 h-8 text-indigo-100" />
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white">AC Technician Portal</h1>
+            <h1 className="text-2xl font-black tracking-tight text-white">Technician Portal</h1>
             <p className="text-xs text-slate-400 mt-2">Sign in using your authorized technical user account</p>
           </div>
 
           {/* Login Card */}
           <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-6">
+            {isIframe && (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs rounded-xl flex flex-col space-y-2.5 animate-fadeIn">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>IFrame Cookie Restriction Detected:</strong> If you get a blank red box, <strong>Error 404</strong>, or cannot sign in, please click the button below to open the portal in a new tab.
+                  </span>
+                </div>
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2 px-4 rounded-xl text-center transition-all inline-flex items-center justify-center space-x-1 shadow-md active:scale-95"
+                >
+                  <span>Open Portal in New Tab ↗</span>
+                </a>
+              </div>
+            )}
+
             {loginError && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl flex items-start space-x-2 animate-shake">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>{loginError}</span>
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl flex flex-col space-y-1.5 animate-shake">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{loginError}</span>
+                </div>
+                {loginError.toLowerCase().includes('404') && (
+                  <p className="text-[10px] text-rose-400 pl-6 leading-relaxed">
+                    This error usually happens because browsers block cookies inside iframes. 
+                    Please use the <strong>"Open Portal in New Tab"</strong> button above to bypass this.
+                  </p>
+                )}
               </div>
             )}
 
@@ -585,7 +617,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight text-white flex items-center space-x-1.5">
-                <span>AC Technician Portal</span>
+                <span>Technician Portal</span>
                 <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded font-mono">PWA</span>
               </h1>
               <p className="text-[10px] text-slate-400 font-medium flex items-center space-x-1">
@@ -986,7 +1018,7 @@ export default function App() {
                     </p>
                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 overflow-x-auto">
                       <pre className="text-[10px] font-mono text-emerald-300/90 leading-relaxed select-all">
-{`-- PostgreSQL Database Schema Design for AC Technician Service Portal
+{`-- PostgreSQL Database Schema Design for Technician Portal
 
 CREATE TABLE technicians (
     id SERIAL PRIMARY KEY,
@@ -1241,7 +1273,7 @@ CREATE TABLE order_notes (
                       <span>Call Customer</span>
                     </a>
                     <a
-                      href={`https://wa.me/${selectedOrder.customer_phone.replace(/[^0-9]/g, '')}?text=Hello%20${selectedOrder.customer_name},%20this%20is%20AC%20Technician%20Rahul%20regarding%20your%20service%20order%20${selectedOrder.number}.`}
+                      href={`https://wa.me/${selectedOrder.customer_phone.replace(/[^0-9]/g, '')}?text=Hello%20${selectedOrder.customer_name},%20this%20is%20Technician%20Rahul%20regarding%20your%20service%20order%20${selectedOrder.number}.`}
                       target="_blank"
                       rel="noreferrer"
                       className="bg-slate-800 hover:bg-slate-700 text-white rounded-lg p-2.5 text-xs font-bold text-center flex items-center justify-center space-x-2 border border-slate-700 transition-colors shadow-sm"
@@ -1589,7 +1621,7 @@ CREATE TABLE order_notes (
       {/* 5. MINIMALIST FOOTER */}
       <footer className="bg-slate-950 border-t border-slate-800/80 py-4 px-4 text-center text-slate-500 text-[10px] tracking-wide mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2">
-          <span>© 2026 AC Field Service Technician. Powered by Google AI Studio.</span>
+          <span>© 2026 Technician Portal. Powered by Google AI Studio.</span>
           <div className="flex space-x-3 text-[9px] font-mono text-slate-400">
             <span>Server: Active</span>
             <span>•</span>

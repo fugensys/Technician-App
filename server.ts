@@ -52,14 +52,14 @@ const INITIAL_ORDERS: WooCommerceOrder[] = [
     longitude: -122.0848,
     preferred_time: 'Today, 10:00 AM - 12:00 PM',
     payment_status: 'Paid',
-    service_type: 'AC Installation',
-    products: ['Samsung Split AC 1.5 Ton (Inverter)', 'Heavy Duty Outdoor Bracket'],
+    service_type: 'Washing Machine Installation',
+    products: ['Samsung Front Load 8kg Washing Machine', 'Universal Inlet Hose (6ft)', 'Anti-Vibration Pads'],
     technician_status: 'Assigned',
     notes: [
       {
         id: '1',
         author: 'WooCommerce Store',
-        message: 'Customer requested installation on third floor exterior wall. Needs long copper piping.',
+        message: 'Customer requested installation in first-floor utility room. Confirm inlet pressure.',
         timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
       },
     ],
@@ -80,14 +80,14 @@ const INITIAL_ORDERS: WooCommerceOrder[] = [
     longitude: -117.8714,
     preferred_time: 'Today, 02:30 PM - 04:30 PM',
     payment_status: 'Cash on Delivery',
-    service_type: 'AC Gas Refilling & Servicing',
-    products: ['R410A Refrigerant Refill', 'General Filter Cleaning & Coil Wash'],
+    service_type: 'Double-Door Refrigerator Repair',
+    products: ['Cooling Defrost Thermostat Replacement', 'Gas Leakage Sealing & Recharge'],
     technician_status: 'In Progress',
     notes: [
       {
         id: '1',
         author: 'Admin',
-        message: 'Check for cooling coil leakage before filling the gas gas.',
+        message: 'Check for gas coil leakage in freezer compartment before starting the compressor recharge.',
         timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
       },
       {
@@ -115,8 +115,8 @@ const INITIAL_ORDERS: WooCommerceOrder[] = [
     longitude: -122.3912,
     preferred_time: 'Tomorrow, 09:00 AM - 11:00 AM',
     payment_status: 'Paid',
-    service_type: 'AC Preventive Maintenance',
-    products: ['Comprehensive AMC Servicing (Multi-Split Unit)'],
+    service_type: 'Water Purifier Maintenance & Filter Swap',
+    products: ['Active Carbon Sediment Filter Set', 'RO Membrane Replacement'],
     technician_status: 'Assigned',
     notes: [],
     photos: [],
@@ -136,8 +136,8 @@ const INITIAL_ORDERS: WooCommerceOrder[] = [
     longitude: -121.9634,
     preferred_time: 'Yesterday, 11:00 AM',
     payment_status: 'Paid',
-    service_type: 'AC Repair (Noise Inspection)',
-    products: ['Compressor Mounting Replacements', 'Condenser Fan Lubrication'],
+    service_type: 'Inverter Air Conditioner Noise Inspection',
+    products: ['Outdoor Compressor Rubber Mountings', 'BLDC Fan Motor Lubrication'],
     technician_status: 'Closed',
     notes: [
       {
@@ -155,8 +155,8 @@ const INITIAL_ORDERS: WooCommerceOrder[] = [
     ],
     photos: [],
     materials: [
-      { id: 'm1', name: 'Rubber Dampers', quantity: 4, remarks: 'Compressor mounting' },
-      { id: 'm2', name: 'Coil Cleansing Spray', quantity: 1 },
+      { id: 'm1', name: 'Run Capacitor (45 uF / 50 uF)', quantity: 1, remarks: 'Compressor startup' },
+      { id: 'm2', name: 'High-Strength Insulation Tape', quantity: 1 },
     ],
     signature: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cGF0aCBkPSJNIDEwIDEwIEwgOTAgOTAiIHN0cm9rZT0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg==',
     completed_at: new Date(Date.now() - 3600000 * 23.5).toISOString(),
@@ -655,18 +655,18 @@ app.get('/api/orders', async (req, res) => {
       const products = (wcOrder.line_items || []).map((item: any) => item.name);
       
       // Classify service type based on ordered product names
-      let serviceType = 'AC Servicing & Repair';
+      let serviceType = 'Product Servicing & Repair';
       const combinedProductsStr = products.join(' ').toLowerCase();
       if (combinedProductsStr.includes('install')) {
-        serviceType = 'AC Installation';
+        serviceType = 'Equipment Installation';
       } else if (combinedProductsStr.includes('repair') || combinedProductsStr.includes('fix') || combinedProductsStr.includes('noise') || combinedProductsStr.includes('diagnostic')) {
-        serviceType = 'AC Diagnostic & Repair';
+        serviceType = 'Product Diagnostic & Repair';
       } else if (combinedProductsStr.includes('gas') || combinedProductsStr.includes('refill') || combinedProductsStr.includes('charge')) {
-        serviceType = 'AC Gas Charging & Service';
+        serviceType = 'System Recharge & Service';
       } else if (combinedProductsStr.includes('leak') || combinedProductsStr.includes('water')) {
-        serviceType = 'AC Leak Repair';
+        serviceType = 'Leak Detection & Repair';
       } else if (combinedProductsStr.includes('maintenance') || combinedProductsStr.includes('amc')) {
-        serviceType = 'AC Maintenance Contract';
+        serviceType = 'Annual Maintenance Contract';
       }
 
       // Assign beautiful deterministic GPS coordinate offsets centered near SF Silicon Valley 
@@ -725,7 +725,7 @@ app.get('/api/orders', async (req, res) => {
         preferred_time: preferredTime,
         payment_status: paymentStatus,
         service_type: serviceType,
-        products: products.length > 0 ? products : ['Comprehensive AC Service & Clean'],
+        products: products.length > 0 ? products : ['Comprehensive Product Service & Clean'],
         technician_status: technicianStatus,
         rejection_reason: existing?.rejection_reason,
         notes: mergedNotes,

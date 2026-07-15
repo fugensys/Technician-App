@@ -13,13 +13,14 @@ interface MaterialTrackerProps {
 }
 
 const COMMON_MATERIALS = [
-  { name: 'Copper Pipe (1/4 & 1/2)', defaultQty: 10, unit: 'ft' },
-  { name: 'R32 Refrigerant Gas', defaultQty: 1.2, unit: 'kg' },
-  { name: 'R410A Refrigerant Gas', defaultQty: 1.5, unit: 'kg' },
-  { name: 'Heavy Duty Condenser Bracket', defaultQty: 1, unit: 'set' },
-  { name: 'Drain Water Pipe', defaultQty: 15, unit: 'ft' },
-  { name: 'Electric Wire (3 Core)', defaultQty: 12, unit: 'ft' },
-  { name: 'Insulation Sleeves Tape', defaultQty: 2, unit: 'roll' },
+  { name: 'Universal Inlet Hose (6ft)', defaultQty: 1, unit: 'pcs' },
+  { name: 'Electric Wire (3 Core, Heavy Duty)', defaultQty: 15, unit: 'ft' },
+  { name: 'Refrigerant Gas (R410A / R134a)', defaultQty: 1.2, unit: 'kg' },
+  { name: 'Universal Controller PCB', defaultQty: 1, unit: 'pcs' },
+  { name: 'Drain Water Pipe (10ft)', defaultQty: 1, unit: 'pcs' },
+  { name: 'Water Purifier Filter Set', defaultQty: 1, unit: 'set' },
+  { name: 'High-Strength Insulation Tape', defaultQty: 2, unit: 'roll' },
+  { name: 'Run Capacitor (45 uF / 50 uF)', defaultQty: 1, unit: 'pcs' },
 ];
 
 export default function MaterialTracker({ materials, onAdd }: MaterialTrackerProps) {
@@ -85,7 +86,7 @@ export default function MaterialTracker({ materials, onAdd }: MaterialTrackerPro
       {/* Quick Select Suggestions */}
       <div>
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-          Frequently Used AC Materials
+          Frequently Used Service Spares
         </span>
         <div className="flex flex-wrap gap-1.5">
           {COMMON_MATERIALS.map((c, idx) => (
