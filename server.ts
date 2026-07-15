@@ -301,10 +301,190 @@ app.post('/api/test-connection', async (req, res) => {
   }
 });
 
-// GET all orders
-app.get('/api/orders', (req, res) => {
-  const orders = loadOrders();
-  res.json(orders);
+// GET all orders with real-time WooCommerce integration & merging
+app.get('/api/orders', async (req, res) => {
+  try {
+    const localOrders = loadOrders();
+    const { WOOCOMMERCE_API_URL, WOOCOMMERCE_CONSUMER_KEY, WOOCOMMERCE_CONSUMER_SECRET } = process.env;
+
+    // If WooCommerce is not configured, return local orders (interactive simulation sandbox mode)
+    if (!WOOCOMMERCE_API_URL || !WOOCOMMERCE_CONSUMER_KEY || !WOOCOMMERCE_CONSUMER_SECRET) {
+      console.log('[WooCommerce Sim] Active. Returning persistent local simulated orders.');
+      return res.json(localOrders);
+    }
+
+    // WooCommerce is configured! Attempt to fetch live orders from the WooCommerce REST API.
+    const authString = Buffer.from(`${WOOCOMMERCE_CONSUMER_KEY}:${WOOCOMMERCE_CONSUMER_SECRET}`).toString('base64');
+    const headers = {
+      'Authorization': `Basic ${authString}`,
+      'Content-Type': 'application/json'
+    };
+
+    const cleanUrl = WOOCOMMERCE_API_URL.replace(/\/$/, '');
+    const fetchUrl = `${cleanUrl}/wp-json/wc/v3/orders?per_page=50`;
+    
+    console.log(`[WooCommerce Pull] Fetching live orders from: ${fetchUrl}`);
+    
+    const response = await fetch(fetchUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      console.error(`[WooCommerce Pull Error] WooCommerce API responded with status ${response.status}: ${response.statusText}`);
+      // Fail-safe graceful fallback: return local database if the WordPress server is down or returns an error
+      return res.json(localOrders);
+    }
+
+    const wcOrders = await response.json();
+    if (!Array.isArray(wcOrders)) {
+      console.error('[WooCommerce Pull Error] API response is not a JSON array:', wcOrders);
+      return res.json(localOrders);
+    }
+
+    console.log(`[WooCommerce Pull Success] Fetched ${wcOrders.length} live orders. Merging with local status store...`);
+
+    // Merge live WooCommerce orders with our local status persistence (technician statuses, materials, photos, etc.)
+    const mergedOrders: WooCommerceOrder[] = wcOrders.map((wcOrder: any) => {
+      const id = wcOrder.id;
+      // Search if we already have local progress state stored for this order ID
+      const existing = localOrders.find((o) => o.id === id);
+
+      // Extract customer details safely
+      const billing = wcOrder.billing || {};
+      const shipping = wcOrder.shipping || {};
+      const firstName = billing.first_name || shipping.first_name || 'Valued';
+      const lastName = billing.last_name || shipping.last_name || 'Customer';
+      const customerName = `${firstName} ${lastName}`.trim();
+
+      // Format clean, human-readable address string
+      const addressParts = [
+        billing.address_1 || shipping.address_1 || '',
+        billing.address_2 || shipping.address_2 || '',
+        billing.city || shipping.city || '',
+        billing.state || shipping.state || '',
+        billing.postcode || shipping.postcode || ''
+      ].filter(Boolean);
+      const customerAddress = addressParts.join(', ') || 'Address details not specified';
+
+      // Parse payment status details
+      let paymentStatus: 'Paid' | 'Unpaid' | 'Cash on Delivery' = 'Unpaid';
+      const paymentMethod = (wcOrder.payment_method_title || '').toLowerCase();
+      if (paymentMethod.includes('cash') || paymentMethod.includes('cod') || wcOrder.payment_method === 'cod') {
+        paymentStatus = 'Cash on Delivery';
+      } else if (wcOrder.status === 'completed' || wcOrder.status === 'processing') {
+        paymentStatus = 'Paid';
+      }
+
+      // Check if order contains a custom preferred_time meta-field, otherwise set dynamic appointment slot
+      let preferredTime = 'Today, 10:00 AM - 12:00 PM';
+      if (wcOrder.meta_data && Array.isArray(wcOrder.meta_data)) {
+        const prefTimeMeta = wcOrder.meta_data.find((m: any) => m.key === 'preferred_time' || m.key === '_preferred_time');
+        if (prefTimeMeta) {
+          preferredTime = prefTimeMeta.value;
+        }
+      }
+
+      // Map purchased products
+      const products = (wcOrder.line_items || []).map((item: any) => item.name);
+      
+      // Classify service type based on ordered product names
+      let serviceType = 'AC Servicing & Repair';
+      const combinedProductsStr = products.join(' ').toLowerCase();
+      if (combinedProductsStr.includes('install')) {
+        serviceType = 'AC Installation';
+      } else if (combinedProductsStr.includes('repair') || combinedProductsStr.includes('fix') || combinedProductsStr.includes('noise') || combinedProductsStr.includes('diagnostic')) {
+        serviceType = 'AC Diagnostic & Repair';
+      } else if (combinedProductsStr.includes('gas') || combinedProductsStr.includes('refill') || combinedProductsStr.includes('charge')) {
+        serviceType = 'AC Gas Charging & Service';
+      } else if (combinedProductsStr.includes('leak') || combinedProductsStr.includes('water')) {
+        serviceType = 'AC Leak Repair';
+      } else if (combinedProductsStr.includes('maintenance') || combinedProductsStr.includes('amc')) {
+        serviceType = 'AC Maintenance Contract';
+      }
+
+      // Assign beautiful deterministic GPS coordinate offsets centered near SF Silicon Valley 
+      // so all orders render dynamically across the live Interactive Service Area Map.
+      const offsetLat = ((id * 17) % 100) / 1000 - 0.05;
+      const offsetLng = ((id * 23) % 100) / 1000 - 0.05;
+      const latitude = existing?.latitude || (37.4223 + offsetLat);
+      const longitude = existing?.longitude || (-122.0848 + offsetLng);
+
+      // Synchronize order state:
+      // If we already have local progress status (e.g. Reached, Travelling) keep that since it's the real-time tech status.
+      // Otherwise, map from standard WooCommerce order status.
+      let technicianStatus: JobStatus = 'Assigned';
+      if (existing) {
+        technicianStatus = existing.technician_status;
+      } else {
+        if (wcOrder.status === 'completed') {
+          technicianStatus = 'Closed';
+        } else if (wcOrder.status === 'on-hold') {
+          technicianStatus = 'Assigned';
+        }
+      }
+
+      // Format custom Customer order notes
+      const notesList: OrderNote[] = [];
+      if (wcOrder.customer_note && wcOrder.customer_note.trim() !== '') {
+        notesList.push({
+          id: `wc-cust-${id}`,
+          author: 'Customer Note',
+          message: wcOrder.customer_note,
+          timestamp: wcOrder.date_created || new Date().toISOString()
+        });
+      }
+
+      const mergedNotes = existing ? [...existing.notes] : notesList;
+
+      // Ensure a system initial receipt note exists
+      if (mergedNotes.length === 0) {
+        mergedNotes.push({
+          id: `wc-sys-init-${id}`,
+          author: 'WooCommerce Store',
+          message: `Order #${wcOrder.number || id} imported successfully. Current WooCommerce Status: ${wcOrder.status}.`,
+          timestamp: wcOrder.date_created || new Date().toISOString()
+        });
+      }
+
+      return {
+        id,
+        number: `#${wcOrder.number || id}`,
+        customer_name: customerName,
+        customer_phone: billing.phone || shipping.phone || 'N/A',
+        customer_email: billing.email || 'N/A',
+        customer_address: customerAddress,
+        latitude,
+        longitude,
+        preferred_time: preferredTime,
+        payment_status: paymentStatus,
+        service_type: serviceType,
+        products: products.length > 0 ? products : ['Comprehensive AC Service & Clean'],
+        technician_status: technicianStatus,
+        rejection_reason: existing?.rejection_reason,
+        notes: mergedNotes,
+        photos: existing?.photos || [],
+        materials: existing?.materials || [],
+        signature: existing?.signature || null,
+        completed_at: existing?.completed_at || (wcOrder.status === 'completed' ? (wcOrder.date_completed || new Date().toISOString()) : null),
+        created_at: wcOrder.date_created || new Date().toISOString()
+      };
+    });
+
+    // To allow seamless testing, we preserve local simulated orders that do not overlap with live store order IDs
+    const liveIds = new Set(mergedOrders.map(o => o.id));
+    const onlyLocal = localOrders.filter(o => !liveIds.has(o.id));
+    const finalOrders = [...mergedOrders, ...onlyLocal];
+
+    // Save the merged data to the store file so updates by the technician are kept safe
+    saveOrders(finalOrders);
+
+    return res.json(finalOrders);
+  } catch (err: any) {
+    console.error('[WooCommerce Pull] Critical error, returning local database as fallback:', err);
+    const localOrders = loadOrders();
+    return res.json(localOrders);
+  }
 });
 
 // GET order details
