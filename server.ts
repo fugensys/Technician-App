@@ -20,6 +20,23 @@ const PORT = 3000;
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
+// Logging middleware to trace incoming requests and response status codes
+app.use((req, res, next) => {
+  const start = Date.now();
+  console.log(`[HTTP_LOG] INCOMING: ${req.method} ${req.url}`);
+  const oldJson = res.json;
+  res.json = function (body) {
+    console.log(`[HTTP_LOG] OUTGOING: ${req.method} ${req.url} - Status: ${res.statusCode} (${Date.now() - start}ms) - JSON:`, JSON.stringify(body).slice(0, 200));
+    return oldJson.call(this, body);
+  };
+  const oldSend = res.send;
+  res.send = function (body) {
+    console.log(`[HTTP_LOG] OUTGOING: ${req.method} ${req.url} - Status: ${res.statusCode} (${Date.now() - start}ms)`);
+    return oldSend.call(this, body);
+  };
+  next();
+});
+
 // File-based state persistence for robust developer experience
 const STORE_PATH = path.join(process.cwd(), 'src', 'orders-store.json');
 
@@ -316,7 +333,8 @@ async function ensureSupabaseTechniciansSeeded(supabaseClient: any): Promise<boo
         const { error: insertError } = await supabaseClient.from('technicians').insert([
           { email: 'ereshmb@gmail.com', password_hash: '10001', name: 'Eresh M B', phone: '+1 (555) 012-1001', role: 'Technician' },
           { email: 'decentsachin.143@gmail.com', password_hash: '10002', name: 'Sachin', phone: '+1 (555) 012-1002', role: 'Technician' },
-          { email: 'nidhishri767@gmail.com', password_hash: '10003', name: 'Nidhishri', phone: '+1 (555) 012-1003', role: 'Technician' }
+          { email: 'nidhishri767@gmail.com', password_hash: '10003', name: 'Nidhishri', phone: '+1 (555) 012-1003', role: 'Technician' },
+          { email: 'fugensys@gmail.com', password_hash: '10004', name: 'Fugensys Admin', phone: '+1 (555) 012-1004', role: 'Technician' }
         ]);
         if (insertError) {
           console.error('[Supabase Seed] Insertion failed:', insertError.message);

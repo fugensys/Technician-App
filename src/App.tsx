@@ -546,6 +546,27 @@ export default function App() {
                 ))}
               </div>
             </div>
+
+            <div className="border-t border-slate-800/80 pt-4 flex flex-col items-center space-y-1 text-center">
+              <div className="flex items-center space-x-1.5">
+                <span className={`w-2 h-2 rounded-full ${configStatus.hasSupabaseConfigured ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500 animate-pulse'}`} />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Supabase DB: {configStatus.hasSupabaseConfigured ? 'Connected' : 'Not Configured'}
+                </span>
+              </div>
+              <p className="text-[9px] text-slate-500 leading-normal max-w-xs">
+                {configStatus.hasSupabaseConfigured
+                  ? `Active on: ${configStatus.supabaseUrl}`
+                  : 'Running in simulated sandbox mode.'}
+              </p>
+              <button 
+                type="button" 
+                onClick={() => window.location.reload()}
+                className="text-[9px] text-indigo-400 hover:text-indigo-300 font-semibold underline mt-1 cursor-pointer"
+              >
+                Force Refresh Portal
+              </button>
+            </div>
           </div>
         </div>
       </div>
