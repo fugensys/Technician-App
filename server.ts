@@ -260,14 +260,49 @@ function filterOrdersForTechnician(orders: WooCommerceOrder[], techEmail?: strin
 // -------------------------------------------------------------
 
 // POST /api/login for Technician authentication
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and numeric password are required' });
   }
 
+  const emailTrim = email.trim().toLowerCase();
+  const passwordTrim = password.trim();
+
+  // 1. Try to authenticate via Supabase if configured
+  const { SUPABASE_URL, SUPABASE_ANON_KEY } = process.env;
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const { data, error } = await supabase
+        .from('technicians')
+        .select('*')
+        .eq('email', emailTrim)
+        .eq('password_hash', passwordTrim)
+        .single();
+
+      if (!error && data) {
+        console.log(`[Auth] User ${emailTrim} authenticated successfully via Supabase`);
+        return res.json({
+          success: true,
+          user: {
+            email: data.email,
+            name: data.name,
+            role: data.role || 'Technician'
+          }
+        });
+      } else if (error && error.code !== 'PGRST116' && error.code !== '42P01') {
+        // PGRST116 means no rows found, 42P01 means table doesn't exist.
+        console.warn('[Auth] Supabase auth error:', error.message);
+      }
+    } catch (supabaseErr) {
+      console.error('[Auth] Supabase connection exception during login:', supabaseErr);
+    }
+  }
+
+  // 2. Fall back to local hardcoded AUTHORIZED_TECHNICIANS
   const tech = AUTHORIZED_TECHNICIANS.find(
-    t => t.email.toLowerCase() === email.trim().toLowerCase() && t.password_hash === password.trim()
+    t => t.email.toLowerCase() === emailTrim && t.password_hash === passwordTrim
   );
 
   if (tech) {

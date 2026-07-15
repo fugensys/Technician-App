@@ -406,11 +406,23 @@ export default function App() {
         setLoginEmail('');
         setLoginPassword('');
       } else {
-        const errData = await res.json();
-        setLoginError(errData.error || 'Authentication failed');
+        let errMsg = 'Authentication failed';
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch (jsonErr) {
+          try {
+            const text = await res.text();
+            errMsg = text || errMsg;
+          } catch (textErr) {
+            errMsg = `Error ${res.status}: ${res.statusText}`;
+          }
+        }
+        setLoginError(errMsg);
       }
     } catch (err: any) {
-      setLoginError('Could not contact authentication server.');
+      console.error('Login error:', err);
+      setLoginError(`Could not contact authentication server: ${err.message || err}`);
     } finally {
       setLoggingIn(false);
     }
