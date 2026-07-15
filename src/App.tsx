@@ -72,6 +72,9 @@ export default function App() {
     hasGoogleMapsConfigured: false
   });
 
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +82,39 @@ export default function App() {
   useEffect(() => {
     fetchConfigAndOrders();
   }, []);
+
+  const handleTestConnection = async () => {
+    try {
+      setTestingConnection(true);
+      setTestResult(null);
+      const res = await fetch('/api/test-connection', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setTestResult({
+          success: data.success,
+          message: data.message
+        });
+        // Also refresh config status
+        const configRes = await fetch('/api/config-status');
+        if (configRes.ok) {
+          const configData = await configRes.json();
+          setConfigStatus(configData);
+        }
+      } else {
+        setTestResult({
+          success: false,
+          message: `Server responded with an error code: ${res.status} ${res.statusText}`
+        });
+      }
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: `Failed to contact the server: ${err.message || err}`
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
 
   const fetchConfigAndOrders = async () => {
     try {
@@ -567,6 +603,58 @@ export default function App() {
                           : 'Standard embedded iframe coordinate visualization is active. Provide key to activate advanced marker paths.'}
                       </p>
                     </div>
+                  </div>
+
+                  {/* Connection Test Trigger & Results */}
+                  <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
+                          <Activity className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Live Connection Check</span>
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Perform a live diagnostic check of the WordPress WooCommerce REST API integration.</p>
+                      </div>
+                      <button
+                        onClick={handleTestConnection}
+                        disabled={testingConnection}
+                        className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all flex items-center justify-center space-x-1.5 ${
+                          testingConnection
+                            ? 'bg-slate-850 text-slate-500 border-slate-800 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500/30 hover:scale-[1.02] shadow-md shadow-indigo-950/40 active:scale-[0.98]'
+                        }`}
+                      >
+                        {testingConnection ? (
+                          <>
+                            <span className="inline-block w-3 h-3 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mr-1" />
+                            <span>Pinging Store...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Wifi className="w-3.5 h-3.5 mr-1" />
+                            <span>Check WooCommerce API</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {testResult && (
+                      <div className={`p-3.5 rounded-xl border text-xs flex items-start space-x-2.5 animate-fadeIn ${
+                        testResult.success
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      }`}>
+                        {testResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="space-y-1">
+                          <p className="font-bold">{testResult.success ? 'Diagnostic Connection Passed' : 'Diagnostic Connection Failed'}</p>
+                          <p className="text-[11px] opacity-90 leading-relaxed">{testResult.message}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Detailed setup instructions */}

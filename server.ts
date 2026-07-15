@@ -242,6 +242,65 @@ app.get('/api/config-status', (req, res) => {
   });
 });
 
+// POST test-connection to verify WooCommerce credentials and reachability
+app.post('/api/test-connection', async (req, res) => {
+  const { WOOCOMMERCE_API_URL, WOOCOMMERCE_CONSUMER_KEY, WOOCOMMERCE_CONSUMER_SECRET } = process.env;
+  
+  if (!WOOCOMMERCE_API_URL || !WOOCOMMERCE_CONSUMER_KEY || !WOOCOMMERCE_CONSUMER_SECRET) {
+    return res.json({
+      success: false,
+      configured: false,
+      message: 'WooCommerce API credentials are not set in environment variables. Currently running in Simulated Sandbox Mode with persistent mock orders.'
+    });
+  }
+
+  try {
+    const authString = Buffer.from(`${WOOCOMMERCE_CONSUMER_KEY}:${WOOCOMMERCE_CONSUMER_SECRET}`).toString('base64');
+    const headers = {
+      'Authorization': `Basic ${authString}`,
+      'Content-Type': 'application/json'
+    };
+
+    const cleanUrl = WOOCOMMERCE_API_URL.replace(/\/$/, '');
+    // Fetch a very small payload (first order) to verify keys can authenticate
+    const pingUrl = `${cleanUrl}/wp-json/wc/v3/orders?per_page=1`;
+    
+    console.log(`[WooCommerce Connection Test] Verifying reachability at ${pingUrl}`);
+    const response = await fetch(pingUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    if (response.ok) {
+      return res.json({
+        success: true,
+        configured: true,
+        message: `Successfully connected! Your WordPress/WooCommerce server is responsive and accepted API credentials. Reachable at: ${cleanUrl}`
+      });
+    } else {
+      let errorDetail = '';
+      try {
+        const errJson = await response.json();
+        errorDetail = errJson.message || errJson.code || '';
+      } catch (e) {
+        errorDetail = response.statusText || `HTTP Status ${response.status}`;
+      }
+      return res.json({
+        success: false,
+        configured: true,
+        message: `WooCommerce server returned an error: ${response.status} (${errorDetail}). Please check that Consumer Key and Secret are correct and have read/write permissions.`
+      });
+    }
+  } catch (err: any) {
+    console.error('[WooCommerce Connection Test] Error testing connection:', err);
+    return res.json({
+      success: false,
+      configured: true,
+      message: `Network Connection Error: Could not resolve or reach ${WOOCOMMERCE_API_URL}. Check if the URL is correct, public, uses HTTPS, and has no firewall blocking requests. Details: ${err.message || err}`
+    });
+  }
+});
+
 // GET all orders
 app.get('/api/orders', (req, res) => {
   const orders = loadOrders();
