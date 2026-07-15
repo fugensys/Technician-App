@@ -1,0 +1,6 @@
+{
+  "name": "AC Technician Portal",
+  "description": "A WooCommerce-integrated progressive web application for AC installation, servicing, and repair technicians to manage job workflows, customer locations, and status sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
