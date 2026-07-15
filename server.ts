@@ -174,6 +174,45 @@ function saveOrders(orders: WooCommerceOrder[]) {
   }
 }
 
+// Robust fetch wrapper for WooCommerce REST API.
+// Automatically falls back from pretty permalinks (/wp-json/wc/v3/...) to plain query permalinks (/?rest_route=/wc/v3/...)
+// if the target server returns a 404, ensuring universal compatibility.
+async function fetchWooCommerce(
+  baseUrl: string,
+  apiPath: string, // e.g. '/wc/v3/orders' or '/wc/v3/orders/123/notes'
+  options: RequestInit = {},
+  queryParams: Record<string, string | number> = {}
+): Promise<Response> {
+  const cleanUrl = baseUrl.replace(/\/$/, '');
+  
+  // Try default pretty permalinks first
+  const prettyParams = new URLSearchParams(queryParams as any).toString();
+  const prettyUrl = `${cleanUrl}/wp-json${apiPath}${prettyParams ? '?' + prettyParams : ''}`;
+  
+  console.log(`[WooCommerce Fetch] Trying pretty URL format: ${prettyUrl}`);
+  let response = await fetch(prettyUrl, options);
+  
+  if (response.status === 404) {
+    console.log('[WooCommerce Fetch] Pretty URL returned 404. Retrying with plain query permalinks fallback (/?rest_route=)...');
+    // For plain permalinks, we pass the path inside 'rest_route' parameter
+    const fallbackParams = {
+      ...queryParams,
+      rest_route: apiPath
+    };
+    const fallbackParamsStr = new URLSearchParams(fallbackParams as any).toString();
+    const fallbackUrl = `${cleanUrl}/?${fallbackParamsStr}`;
+    
+    console.log(`[WooCommerce Fetch] Trying fallback URL format: ${fallbackUrl}`);
+    const fallbackResponse = await fetch(fallbackUrl, options);
+    if (fallbackResponse.status !== 404) {
+      console.log('[WooCommerce Fetch] Success using plain permalinks fallback!');
+      return fallbackResponse;
+    }
+  }
+  
+  return response;
+}
+
 // Optional WooCommerce API connection wrapper
 async function syncToWooCommerce(
   orderId: number,
@@ -195,15 +234,16 @@ async function syncToWooCommerce(
     };
 
     // Update Order Status
-    const cleanUrl = WOOCOMMERCE_API_URL.replace(/\/$/, '');
-    const updateUrl = `${cleanUrl}/wp-json/wc/v3/orders/${orderId}`;
-    
-    console.log(`[WooCommerce Real Sync] Syncing status to WooCommerce at ${updateUrl}`);
-    const statusResponse = await fetch(updateUrl, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({ status })
-    });
+    console.log(`[WooCommerce Real Sync] Syncing status to WooCommerce order #${orderId}`);
+    const statusResponse = await fetchWooCommerce(
+      WOOCOMMERCE_API_URL,
+      `/wc/v3/orders/${orderId}`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ status })
+      }
+    );
 
     if (!statusResponse.ok) {
       console.error(`[WooCommerce Real Sync] Failed to update status: ${statusResponse.status} ${statusResponse.statusText}`);
@@ -211,13 +251,16 @@ async function syncToWooCommerce(
 
     // Add Order Note
     if (noteMessage) {
-      const noteUrl = `${cleanUrl}/wp-json/wc/v3/orders/${orderId}/notes`;
-      console.log(`[WooCommerce Real Sync] Syncing note to WooCommerce at ${noteUrl}`);
-      const noteResponse = await fetch(noteUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ note: noteMessage })
-      });
+      console.log(`[WooCommerce Real Sync] Syncing note to WooCommerce order #${orderId}`);
+      const noteResponse = await fetchWooCommerce(
+        WOOCOMMERCE_API_URL,
+        `/wc/v3/orders/${orderId}/notes`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ note: noteMessage })
+        }
+      );
       if (!noteResponse.ok) {
         console.error(`[WooCommerce Real Sync] Failed to create note: ${noteResponse.status} ${noteResponse.statusText}`);
       }
@@ -412,21 +455,21 @@ app.post('/api/test-connection', async (req, res) => {
       'Content-Type': 'application/json'
     };
 
-    const cleanUrl = WOOCOMMERCE_API_URL.replace(/\/$/, '');
-    // Fetch a very small payload (first order) to verify keys can authenticate
-    const pingUrl = `${cleanUrl}/wp-json/wc/v3/orders?per_page=1`;
-    
-    console.log(`[WooCommerce Connection Test] Verifying reachability at ${pingUrl}`);
-    const response = await fetch(pingUrl, {
-      method: 'GET',
-      headers,
-    });
+    const response = await fetchWooCommerce(
+      WOOCOMMERCE_API_URL,
+      '/wc/v3/orders',
+      {
+        method: 'GET',
+        headers,
+      },
+      { per_page: 1 }
+    );
 
     if (response.ok) {
       return res.json({
         success: true,
         configured: true,
-        message: `Successfully connected! Your WordPress/WooCommerce server is responsive and accepted API credentials. Reachable at: ${cleanUrl}`
+        message: `Successfully connected! Your WordPress/WooCommerce server is responsive and accepted API credentials. Reachable at: ${WOOCOMMERCE_API_URL}`
       });
     } else {
       let errorDetail = '';
@@ -472,15 +515,15 @@ app.get('/api/orders', async (req, res) => {
       'Content-Type': 'application/json'
     };
 
-    const cleanUrl = WOOCOMMERCE_API_URL.replace(/\/$/, '');
-    const fetchUrl = `${cleanUrl}/wp-json/wc/v3/orders?per_page=50`;
-    
-    console.log(`[WooCommerce Pull] Fetching live orders from: ${fetchUrl}`);
-    
-    const response = await fetch(fetchUrl, {
-      method: 'GET',
-      headers,
-    });
+    const response = await fetchWooCommerce(
+      WOOCOMMERCE_API_URL,
+      '/wc/v3/orders',
+      {
+        method: 'GET',
+        headers,
+      },
+      { per_page: 50 }
+    );
 
     if (!response.ok) {
       console.error(`[WooCommerce Pull Error] WooCommerce API responded with status ${response.status}: ${response.statusText}`);
