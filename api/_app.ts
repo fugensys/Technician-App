@@ -66,31 +66,54 @@ const authenticateToken = (req: AuthenticatedRequest, res: express.Response, nex
 // Seed manual technicians with hashed passwords on startup if empty
 async function ensureSupabaseTechniciansSeeded(): Promise<boolean> {
   try {
-    const { data, error } = await supabaseAdmin.from('technicians').select('id').limit(1);
-    if (!error) {
-      if (!data || data.length === 0) {
-        console.log('[Supabase Seed] technicians table is empty. Seeding default accounts...');
-        
-        const techniciansToSeed = [
-          { email: 'ereshmb@gmail.com', password_hash: bcrypt.hashSync('10001', 10), name: 'Eresh M B', phone: '+1 (555) 012-1001', role: 'Technician' },
-          { email: 'decentsachin.143@gmail.com', password_hash: bcrypt.hashSync('10002', 10), name: 'Sachin', phone: '+1 (555) 012-1002', role: 'Technician' },
-          { email: 'nidhishri767@gmail.com', password_hash: bcrypt.hashSync('10003', 10), name: 'Nidhishri', phone: '+1 (555) 012-1003', role: 'Technician' },
-          { email: 'fugensys@gmail.com', password_hash: bcrypt.hashSync('10004', 10), name: 'Fugensys Admin', phone: '+1 (555) 012-1004', role: 'Technician' }
-        ];
+    const techniciansToSeed = [
+      { email: 'ereshmb@gmail.com', password: '10001', name: 'Eresh M B', phone: '+1 (555) 012-1001', role: 'Technician' },
+      { email: 'decentsachin.143@gmail.com', password: '10002', name: 'Sachin', phone: '+1 (555) 012-1002', role: 'Technician' },
+      { email: 'nidhishri767@gmail.com', password: '10003', name: 'Nidhishri', phone: '+1 (555) 012-1003', role: 'Technician' },
+      { email: 'fugensys@gmail.com', password: '10004', name: 'Fugensys Admin', phone: '+1 (555) 012-1004', role: 'Technician' }
+    ];
 
-        const { error: insertError } = await supabaseAdmin.from('technicians').insert(techniciansToSeed);
-        if (insertError) {
-          console.error('[Supabase Seed] Failed to seed default technicians:', insertError.message);
-          return false;
-        }
-        console.log('[Supabase Seed] Successfully seeded 4 manual technicians.');
-        return true;
+    for (const t of techniciansToSeed) {
+      const { data: existing, error } = await supabaseAdmin
+        .from('technicians')
+        .select('*')
+        .eq('email', t.email)
+        .maybeSingle();
+
+      const expectedHash = bcrypt.hashSync(t.password, 10);
+
+      if (error) {
+        console.warn(`[Supabase Seed] Error checking technician ${t.email}:`, error.message);
+        continue;
       }
-      return true;
-    } else {
-      console.warn('[Supabase Seed] Check query failed:', error.message);
-      return false;
+
+      if (!existing) {
+        console.log(`[Supabase Seed] Inserting missing technician: ${t.email}`);
+        await supabaseAdmin.from('technicians').insert({
+          email: t.email,
+          password_hash: expectedHash,
+          name: t.name,
+          phone: t.phone,
+          role: t.role
+        });
+      } else {
+        const isPlaintextMatch = existing.password_hash === t.password;
+        const isBcryptMatch = bcrypt.compareSync(t.password, existing.password_hash);
+        
+        if (!isPlaintextMatch && !isBcryptMatch) {
+          console.log(`[Supabase Seed] Updating password/details for technician: ${t.email}`);
+          await supabaseAdmin
+            .from('technicians')
+            .update({
+              password_hash: expectedHash,
+              name: t.name,
+              phone: t.phone
+            })
+            .eq('email', t.email);
+        }
+      }
     }
+    return true;
   } catch (err: any) {
     console.error('[Supabase Seed] Exception checking technicians:', err.message || err);
     return false;
