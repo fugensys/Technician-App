@@ -29,10 +29,29 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const JWT_SECRET = process.env.JWT_SECRET || SUPABASE_ANON_KEY || 'ac-tech-jwt-secret-key-12345';
 
+// Logging explicit warning if variables are missing or set to placeholders
+const isSupabaseConfigured = 
+  SUPABASE_URL.trim() !== '' && 
+  !SUPABASE_URL.includes('your-project.supabase.co') &&
+  SUPABASE_SERVICE_ROLE_KEY.trim() !== '' && 
+  !SUPABASE_SERVICE_ROLE_KEY.includes('your-service-role-key');
+
+if (!isSupabaseConfigured) {
+  console.error('[STARTUP] ⚠️  SUPABASE DATABASE INTEGRATION IS UNCONFIGURED OR HAS PLACEHOLDERS.');
+  if (!SUPABASE_URL || SUPABASE_URL.includes('your-project.supabase.co')) {
+    console.error('[STARTUP] SUPABASE_URL is missing or set to placeholder — technician login will fail.');
+  }
+  if (!SUPABASE_SERVICE_ROLE_KEY || SUPABASE_SERVICE_ROLE_KEY.includes('your-service-role-key')) {
+    console.error('[STARTUP] SUPABASE_SERVICE_ROLE_KEY is missing or set to placeholder — technician login will fail.');
+  }
+} else {
+  console.log('[STARTUP] ✅ SUPABASE URL & SERVICE ROLE KEY VALIDATED. Live database connection configured.');
+}
+
 // Initialize Supabase Admin Client using service role key (or fall back to anon key if not set)
 const supabaseAdmin = createClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY
+  SUPABASE_URL || 'https://your-project.supabase.co',
+  SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY || 'dummy-key'
 );
 
 // Interface for Express requests carrying authenticated technician context
@@ -387,23 +406,43 @@ app.post('/api/login', async (req, res) => {
   const emailTrim = email.trim().toLowerCase();
   const passwordTrim = password.trim();
 
+  // Guard against unconfigured Supabase database integration
+  if (!isSupabaseConfigured) {
+    return res.status(503).json({
+      error: `Supabase database is NOT configured yet. You must define SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY under your Settings (gear icon in top right) -> Secrets to enable live authentication.`
+    });
+  }
+
   try {
     // Seed default technician list if missing
-    await ensureSupabaseTechniciansSeeded();
+    const seedSuccess = await ensureSupabaseTechniciansSeeded();
+    if (!seedSuccess) {
+      console.warn('[Login Info] ensureSupabaseTechniciansSeeded returned false, attempting user lookup anyway...');
+    }
 
     const { data: tech, error } = await supabaseAdmin
       .from('technicians')
       .select('*')
       .eq('email', emailTrim)
-      .single();
+      .maybeSingle(); // Use maybeSingle instead of single to prevent uncaught 406 exceptions if not found
 
-    if (error || !tech) {
-      return res.status(401).json({ error: 'Invalid email or technician passcode.' });
+    if (error) {
+      console.error('[Auth Database Query Error] Failed looking up technician:', error);
+      return res.status(500).json({ error: `Supabase database query failed: ${error.message}. Please check if the table "technicians" exists in your Supabase project.` });
+    }
+
+    if (!tech) {
+      return res.status(401).json({ error: 'No registered technician found with this email. Please check your spelling.' });
     }
 
     // Support backward-compatible migration for unhashed seed passwords
     const isPlaintextMatch = tech.password_hash === passwordTrim;
-    const isBcryptMatch = bcrypt.compareSync(passwordTrim, tech.password_hash);
+    let isBcryptMatch = false;
+    try {
+      isBcryptMatch = bcrypt.compareSync(passwordTrim, tech.password_hash);
+    } catch (e) {
+      console.warn('[Bcrypt Check] Password hash is not standard bcrypt, trying plaintext:', e);
+    }
 
     if (isPlaintextMatch || isBcryptMatch) {
       if (isPlaintextMatch) {
@@ -441,7 +480,7 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid email or technician passcode.' });
   } catch (err: any) {
     console.error('[Auth Error] Secure login validation failed:', err.message || err);
-    return res.status(500).json({ error: 'Database service unavailable. Please retry later.' });
+    return res.status(500).json({ error: `Authentication failed due to database or server exception: ${err.message || err}` });
   }
 });
 

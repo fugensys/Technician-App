@@ -85,9 +85,18 @@ ALTER TABLE order_materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_photos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE technicians ENABLE ROW LEVEL SECURITY;
 
+-- Clean up existing policies if any
+DROP POLICY IF EXISTS technician_order_access ON service_orders;
+DROP POLICY IF EXISTS technician_note_access ON order_notes;
+DROP POLICY IF EXISTS technician_material_access ON order_materials;
+DROP POLICY IF EXISTS technician_photo_access ON order_photos;
+DROP POLICY IF EXISTS technician_read_access ON technicians;
+DROP POLICY IF EXISTS technician_self_select ON technicians;
+
 -- 7. RLS Access Policies for service_orders:
 -- Technicians can only view or modify orders that are unassigned (technician_status = 'Assigned' and no accepted_by_email)
 -- or are explicitly assigned to their technician email.
+-- Note: Service-role key bypasses RLS by default.
 CREATE POLICY technician_order_access ON service_orders
     FOR ALL
     USING (
@@ -127,8 +136,10 @@ CREATE POLICY technician_photo_access ON order_photos
         )
     );
 
--- Allow public read access (or authenticated) for self-service or app client logins on technician table
-CREATE POLICY technician_read_access ON technicians
+-- Technicians can only view their own record to protect details and password hashes from other users
+CREATE POLICY technician_self_select ON technicians
     FOR SELECT
-    USING (true);
+    USING (
+        email = current_setting('request.jwt.claims', true)::json->>'email'
+    );
 
