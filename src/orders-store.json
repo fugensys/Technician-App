@@ -1,0 +1,175 @@
+[
+  {
+    "id": 14,
+    "number": "#14",
+    "customer_name": "Eresh MB",
+    "customer_phone": "N/A",
+    "customer_email": "eresh@fugensoftware.com",
+    "customer_address": "122, 6th C Main, 4th block, Bangalore, KA, 560011",
+    "latitude": 37.4103,
+    "longitude": -122.11280000000001,
+    "preferred_time": "Today, 10:00 AM - 12:00 PM",
+    "payment_status": "Cash on Delivery",
+    "service_type": "Product Servicing & Repair",
+    "products": [
+      "Samsung S24"
+    ],
+    "technician_status": "Closed",
+    "notes": [
+      {
+        "id": "wc-sys-init-14",
+        "author": "WooCommerce Store",
+        "message": "Order #14 imported successfully. Current WooCommerce Status: completed.",
+        "timestamp": "2026-07-14T11:33:46"
+      }
+    ],
+    "photos": [],
+    "materials": [],
+    "signature": null,
+    "completed_at": "2026-07-14T11:34:36",
+    "created_at": "2026-07-14T11:33:46"
+  },
+  {
+    "id": 1201,
+    "number": "#1201",
+    "customer_name": "John Smith",
+    "customer_phone": "+1 (555) 019-2834",
+    "customer_email": "john.smith@gmail.com",
+    "customer_address": "1600 Amphitheatre Pkwy, Mountain View, CA 94043",
+    "latitude": 37.4223,
+    "longitude": -122.0848,
+    "preferred_time": "Today, 10:00 AM - 12:00 PM",
+    "payment_status": "Paid",
+    "service_type": "Washing Machine Installation",
+    "products": [
+      "Samsung Front Load 8kg Washing Machine",
+      "Universal Inlet Hose (6ft)",
+      "Anti-Vibration Pads"
+    ],
+    "technician_status": "Assigned",
+    "notes": [
+      {
+        "id": "1",
+        "author": "WooCommerce Store",
+        "message": "Customer requested installation in first-floor utility room. Confirm inlet pressure.",
+        "timestamp": "2026-07-16T03:22:40.949Z"
+      }
+    ],
+    "photos": [],
+    "materials": [],
+    "signature": null,
+    "completed_at": null,
+    "created_at": "2026-07-15T07:22:40.949Z"
+  },
+  {
+    "id": 1202,
+    "number": "#1202",
+    "customer_name": "Emily Johnson",
+    "customer_phone": "+1 (555) 023-4567",
+    "customer_email": "emily.j@outlook.com",
+    "customer_address": "111 Town and Country Rd, Orange, CA 92868",
+    "latitude": 33.7884,
+    "longitude": -117.8714,
+    "preferred_time": "Today, 02:30 PM - 04:30 PM",
+    "payment_status": "Cash on Delivery",
+    "service_type": "Double-Door Refrigerator Repair",
+    "products": [
+      "Cooling Defrost Thermostat Replacement",
+      "Gas Leakage Sealing & Recharge"
+    ],
+    "technician_status": "In Progress",
+    "notes": [
+      {
+        "id": "1",
+        "author": "Admin",
+        "message": "Check for gas coil leakage in freezer compartment before starting the compressor recharge.",
+        "timestamp": "2026-07-16T05:22:40.949Z"
+      },
+      {
+        "id": "2",
+        "author": "Technician (Self)",
+        "message": "Departed from the service center. On the way to customer location.",
+        "timestamp": "2026-07-16T06:52:40.949Z"
+      }
+    ],
+    "photos": [],
+    "materials": [],
+    "signature": null,
+    "completed_at": null,
+    "created_at": "2026-07-15T19:22:40.949Z",
+    "accepted_by_email": "ereshmb@gmail.com"
+  },
+  {
+    "id": 1203,
+    "number": "#1203",
+    "customer_name": "Robert Chen",
+    "customer_phone": "+1 (555) 034-5678",
+    "customer_email": "rob.chen@techcorp.com",
+    "customer_address": "345 Spear St, San Francisco, CA 94105",
+    "latitude": 37.7901,
+    "longitude": -122.3912,
+    "preferred_time": "Tomorrow, 09:00 AM - 11:00 AM",
+    "payment_status": "Paid",
+    "service_type": "Water Purifier Maintenance & Filter Swap",
+    "products": [
+      "Active Carbon Sediment Filter Set",
+      "RO Membrane Replacement"
+    ],
+    "technician_status": "Assigned",
+    "notes": [],
+    "photos": [],
+    "materials": [],
+    "signature": null,
+    "completed_at": null,
+    "created_at": "2026-07-16T03:22:40.949Z"
+  },
+  {
+    "id": 1204,
+    "number": "#1204",
+    "customer_name": "David Miller",
+    "customer_phone": "+1 (555) 045-6789",
+    "customer_email": "david.miller@yahoo.com",
+    "customer_address": "100 Winchester Circle, Los Gatos, CA 95032",
+    "latitude": 37.2546,
+    "longitude": -121.9634,
+    "preferred_time": "Yesterday, 11:00 AM",
+    "payment_status": "Paid",
+    "service_type": "Inverter Air Conditioner Noise Inspection",
+    "products": [
+      "Outdoor Compressor Rubber Mountings",
+      "BLDC Fan Motor Lubrication"
+    ],
+    "technician_status": "Closed",
+    "notes": [
+      {
+        "id": "1",
+        "author": "Technician (Self)",
+        "message": "Replaced worn rubber dampers under compressor. Rattling noise fully resolved. Testing completed.",
+        "timestamp": "2026-07-15T07:22:40.949Z"
+      },
+      {
+        "id": "2",
+        "author": "WooCommerce Store",
+        "message": "Technician closed the job. Status synced to Completed in WooCommerce.",
+        "timestamp": "2026-07-15T07:52:40.949Z"
+      }
+    ],
+    "photos": [],
+    "materials": [
+      {
+        "id": "m1",
+        "name": "Run Capacitor (45 uF / 50 uF)",
+        "quantity": 1,
+        "remarks": "Compressor startup"
+      },
+      {
+        "id": "m2",
+        "name": "High-Strength Insulation Tape",
+        "quantity": 1
+      }
+    ],
+    "signature": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cGF0aCBkPSJNIDEwIDEwIEwgOTAgOTAiIHN0cm9rZT0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg==",
+    "completed_at": "2026-07-15T07:52:40.949Z",
+    "created_at": "2026-07-15T01:22:40.949Z"
+  }
+]
