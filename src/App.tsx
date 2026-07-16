@@ -1361,15 +1361,42 @@ CREATE TABLE order_notes (
                               </div>
 
                               <div className="space-y-1">
-                                <div className="text-sm font-bold text-white flex items-center space-x-1.5">
-                                  <User className="w-3.5 h-3.5 text-slate-400" />
-                                  <span>{o.customer_name}</span>
+                                <div className="text-sm font-bold text-white flex items-center justify-between">
+                                  <div className="flex items-center space-x-1.5">
+                                    <User className="w-3.5 h-3.5 text-slate-400" />
+                                    <span>{o.customer_name}</span>
+                                  </div>
                                 </div>
+                                
                                 <div className="text-xs text-slate-400 flex items-start space-x-1.5">
                                   <MapPin className="w-3.5 h-3.5 text-slate-500 mt-0.5 flex-shrink-0" />
                                   <span className="line-clamp-1">{o.customer_address}</span>
                                 </div>
-                                <div className="text-xs text-slate-500 flex items-center space-x-4">
+
+                                <div className="text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
+                                  <a
+                                    href={`tel:${o.customer_phone}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex items-center space-x-1 text-slate-300 hover:text-emerald-400 transition-colors font-medium bg-slate-900/40 hover:bg-slate-900/80 px-2 py-0.5 rounded border border-slate-800/80"
+                                    title="Call Customer"
+                                  >
+                                    <Phone className="w-3 h-3 text-emerald-400" />
+                                    <span>{o.customer_phone}</span>
+                                  </a>
+                                  <a
+                                    href={`https://wa.me/${o.customer_phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${o.customer_name}, this is your technician ${currentUser?.name || 'Eresh'} regarding your service order ${o.number}.`)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex items-center space-x-1 text-slate-300 hover:text-green-400 transition-colors font-medium bg-slate-900/40 hover:bg-slate-900/80 px-2 py-0.5 rounded border border-slate-800/80"
+                                    title="Chat on WhatsApp"
+                                  >
+                                    <MessageSquare className="w-3 h-3 text-green-400" />
+                                    <span>WhatsApp</span>
+                                  </a>
+                                </div>
+
+                                <div className="text-xs text-slate-500 flex items-center space-x-4 pt-0.5">
                                   <span className="flex items-center space-x-1">
                                     <Clock className="w-3 h-3 text-slate-500" />
                                     <span>{o.preferred_time}</span>
@@ -1470,7 +1497,7 @@ CREATE TABLE order_notes (
                       <span>Call Customer</span>
                     </a>
                     <a
-                      href={`https://wa.me/${selectedOrder.customer_phone.replace(/[^0-9]/g, '')}?text=Hello%20${selectedOrder.customer_name},%20this%20is%20Technician%20Rahul%20regarding%20your%20service%20order%20${selectedOrder.number}.`}
+                      href={`https://wa.me/${selectedOrder.customer_phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${selectedOrder.customer_name}, this is your technician ${currentUser?.name || 'Eresh'} regarding your service order ${selectedOrder.number}.`)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="bg-slate-800 hover:bg-slate-700 text-white rounded-lg p-2.5 text-xs font-bold text-center flex items-center justify-center space-x-2 border border-slate-700 transition-colors shadow-sm"
