@@ -1,0 +1,22 @@
+{
+  "short_name": "AC Portal",
+  "name": "AC Technician Service Portal",
+  "description": "Mobile service management portal for AC Technicians",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'><rect width='100%' height='100%' fill='%230f172a'/><circle cx='96' cy='96' r='60' stroke='%2338bdf8' stroke-width='12' fill='none'/><path d='M96 36 L96 66 M96 126 L96 156 M36 96 L66 96 M126 96 L156 96' stroke='%2338bdf8' stroke-width='12' stroke-linecap='round'/></svg>",
+      "type": "image/svg+xml",
+      "sizes": "192x192"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'><rect width='100%' height='100%' fill='%230f172a'/><circle cx='256' cy='256' r='160' stroke='%2338bdf8' stroke-width='32' fill='none'/><path d='M256 96 L256 176 M256 336 L256 416 M96 256 L176 256 M336 256 L416 256' stroke='%2338bdf8' stroke-width='32' stroke-linecap='round'/></svg>",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "portrait"
+}

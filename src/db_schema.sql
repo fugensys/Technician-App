@@ -76,3 +76,59 @@ CREATE INDEX idx_orders_status ON service_orders(technician_status);
 CREATE INDEX idx_orders_accepted_by ON service_orders(accepted_by_email);
 CREATE INDEX idx_notes_order ON order_notes(order_id);
 CREATE INDEX idx_materials_order ON order_materials(order_id);
+
+
+-- 6. Enable Row Level Security (RLS) on all tables to meet compliance requirements
+ALTER TABLE service_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE technicians ENABLE ROW LEVEL SECURITY;
+
+-- 7. RLS Access Policies for service_orders:
+-- Technicians can only view or modify orders that are unassigned (technician_status = 'Assigned' and no accepted_by_email)
+-- or are explicitly assigned to their technician email.
+CREATE POLICY technician_order_access ON service_orders
+    FOR ALL
+    USING (
+        accepted_by_email IS NULL 
+        OR accepted_by_email = current_setting('request.jwt.claims', true)::json->>'email'
+    );
+
+-- RLS Access Policies for related tables (notes, materials, photos):
+-- They are cascade accessed but can be guarded by joining/checking the order's assignment.
+CREATE POLICY technician_note_access ON order_notes
+    FOR ALL
+    USING (
+        order_id IN (
+            SELECT id FROM service_orders 
+            WHERE accepted_by_email IS NULL 
+            OR accepted_by_email = current_setting('request.jwt.claims', true)::json->>'email'
+        )
+    );
+
+CREATE POLICY technician_material_access ON order_materials
+    FOR ALL
+    USING (
+        order_id IN (
+            SELECT id FROM service_orders 
+            WHERE accepted_by_email IS NULL 
+            OR accepted_by_email = current_setting('request.jwt.claims', true)::json->>'email'
+        )
+    );
+
+CREATE POLICY technician_photo_access ON order_photos
+    FOR ALL
+    USING (
+        order_id IN (
+            SELECT id FROM service_orders 
+            WHERE accepted_by_email IS NULL 
+            OR accepted_by_email = current_setting('request.jwt.claims', true)::json->>'email'
+        )
+    );
+
+-- Allow public read access (or authenticated) for self-service or app client logins on technician table
+CREATE POLICY technician_read_access ON technicians
+    FOR SELECT
+    USING (true);
+

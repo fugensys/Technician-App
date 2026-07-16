@@ -181,10 +181,35 @@ export default function App() {
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   
   // Technician user authentication state (from localStorage)
-  const [currentUser, setCurrentUser] = useState<{ email: string; name: string; role: string } | null>(() => {
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string; role: string; token?: string } | null>(() => {
     const saved = localStorage.getItem('ac_tech_user');
     return saved ? JSON.parse(saved) : null;
   });
+
+  // Secure API fetch wrapper with token injection and automatic session timeout handling
+  const apiFetch = async (url: string, options: RequestInit = {}) => {
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string> || {})
+    };
+    if (currentUser?.token) {
+      headers['Authorization'] = `Bearer ${currentUser.token}`;
+    }
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers
+      });
+      if (res.status === 401 || res.status === 403) {
+        console.warn('Session expired or unauthorized. Logging out.');
+        setCurrentUser(null);
+        localStorage.removeItem('ac_tech_user');
+      }
+      return res;
+    } catch (err) {
+      console.error('Fetch network exception:', err);
+      throw err;
+    }
+  };
   
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -200,6 +225,8 @@ export default function App() {
   const [newNoteText, setNewNoteText] = useState('');
   const [tempSignature, setTempSignature] = useState<string | null>(null);
   const [finalCloseNote, setFinalCloseNote] = useState('');
+  const [isClosingJobLoading, setIsClosingJobLoading] = useState(false);
+  const [closeJobError, setCloseJobError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
@@ -235,7 +262,7 @@ export default function App() {
     try {
       setTestingConnection(true);
       setTestResult(null);
-      const res = await fetch('/api/test-connection', { method: 'POST' });
+      const res = await apiFetch('/api/test-connection', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         setTestResult({
@@ -243,7 +270,7 @@ export default function App() {
           message: data.message
         });
         // Also refresh config status
-        const configRes = await fetch('/api/config-status');
+        const configRes = await apiFetch('/api/config-status');
         if (configRes.ok) {
           const configData = await configRes.json();
           setConfigStatus(configData);
@@ -268,7 +295,7 @@ export default function App() {
     try {
       setTestingSupabase(true);
       setSupabaseTestResult(null);
-      const res = await fetch('/api/test-supabase', { method: 'POST' });
+      const res = await apiFetch('/api/test-supabase', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         setSupabaseTestResult({
@@ -276,7 +303,7 @@ export default function App() {
           message: data.message
         });
         // refresh config
-        const configRes = await fetch('/api/config-status');
+        const configRes = await apiFetch('/api/config-status');
         if (configRes.ok) {
           const configData = await configRes.json();
           setConfigStatus(configData);
@@ -303,7 +330,7 @@ export default function App() {
       setError(null);
       setIsOfflineMode(false);
       
-      const configRes = await fetch('/api/config-status').catch(() => null);
+      const configRes = await apiFetch('/api/config-status').catch(() => null);
       if (configRes && configRes.ok) {
         const configData = await configRes.json();
         setConfigStatus(configData);
@@ -313,7 +340,7 @@ export default function App() {
       const emailQuery = techEmail !== undefined ? techEmail : (currentUser ? currentUser.email : null);
       const url = emailQuery ? `/api/orders?tech_email=${encodeURIComponent(emailQuery)}` : '/api/orders';
 
-      const ordersRes = await fetch(url).catch(() => null);
+      const ordersRes = await apiFetch(url).catch(() => null);
       if (ordersRes && ordersRes.ok) {
         const ordersData = await ordersRes.json();
         setOrders(ordersData);
@@ -345,12 +372,14 @@ export default function App() {
 
   const selectOrderWithDetails = async (orderId: number) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}`);
+      const res = await apiFetch(`/api/orders/${orderId}`);
       if (res.ok) {
         const data = await res.json();
         setSelectedOrder(data);
         setTempSignature(data.signature);
         setFinalCloseNote('');
+        setCloseJobError(null);
+        setIsClosingJobLoading(false);
         
         // If selecting from list, open correct viewing workflow if not already
         if (data.technician_status === 'Assigned') {
@@ -369,7 +398,7 @@ export default function App() {
   // Accept Order Workflow
   const handleAcceptOrder = async (orderId: number) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/accept`, {
+      const res = await apiFetch(`/api/orders/${orderId}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: currentUser ? currentUser.email : '' })
@@ -382,6 +411,11 @@ export default function App() {
         calculateStats(updatedOrders);
         setSelectedOrder(order);
         setActiveTab('active');
+      } else if (res.status === 409) {
+        const errData = await res.json();
+        alert(errData.error || 'This job has already been accepted by another technician.');
+        // Refresh order list
+        fetchConfigAndOrders();
       }
     } catch (e) {
       console.error(e);
@@ -391,7 +425,7 @@ export default function App() {
   // Reject Order Workflow
   const handleRejectOrder = async (orderId: number, reason: string) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/reject`, {
+      const res = await apiFetch(`/api/orders/${orderId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
@@ -415,7 +449,7 @@ export default function App() {
   // Progress Status Update Workflow
   const handleUpdateStatus = async (orderId: number, status: JobStatus) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/status`, {
+      const res = await apiFetch(`/api/orders/${orderId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
@@ -436,7 +470,7 @@ export default function App() {
   const handleAddNote = async (orderId: number) => {
     if (!newNoteText.trim()) return;
     try {
-      const res = await fetch(`/api/orders/${orderId}/notes`, {
+      const res = await apiFetch(`/api/orders/${orderId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: newNoteText })
@@ -461,16 +495,17 @@ export default function App() {
   // Upload Photo base64
   const handleUploadPhoto = async (orderId: number, base64: string) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/photos`, {
+      const res = await apiFetch(`/api/orders/${orderId}/photos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ photo: base64 })
       });
       if (res.ok) {
+        const data = await res.json();
         if (selectedOrder && selectedOrder.id === orderId) {
           const updatedSelected = {
             ...selectedOrder,
-            photos: [...selectedOrder.photos, base64]
+            photos: data.photos // Use storage URL array returned by the secure server
           };
           setSelectedOrder(updatedSelected);
           setOrders(orders.map(o => o.id === orderId ? updatedSelected : o));
@@ -484,7 +519,7 @@ export default function App() {
   // Add Material item
   const handleAddMaterial = async (orderId: number, material: Omit<MaterialItem, 'id'>) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/materials`, {
+      const res = await apiFetch(`/api/orders/${orderId}/materials`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(material)
@@ -504,25 +539,43 @@ export default function App() {
 
   // Final Close Job Workflow
   const handleCloseJob = async (orderId: number) => {
+    if (!finalCloseNote || finalCloseNote.trim() === '') {
+      setCloseJobError('Final closing comment note is required before closing the job.');
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/orders/${orderId}/close`, {
+      setIsClosingJobLoading(true);
+      setCloseJobError(null);
+
+      const res = await apiFetch(`/api/orders/${orderId}/close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           signature: tempSignature,
-          notes: finalCloseNote
+          notes: finalCloseNote.trim()
         })
       });
+
       if (res.ok) {
         const { order } = await res.json();
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
         setOrders(updatedOrders);
         calculateStats(updatedOrders);
         setSelectedOrder(order);
+        setFinalCloseNote('');
+        setTempSignature(null);
+        setCloseJobError(null);
         setActiveTab('completed');
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setCloseJobError(errData.error || 'Failed to close the job. WooCommerce sync might have failed.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setCloseJobError(e?.message || 'Network or connection error. Please check your credentials and try again.');
+    } finally {
+      setIsClosingJobLoading(false);
     }
   };
 
@@ -531,67 +584,26 @@ export default function App() {
     try {
       setLoggingIn(true);
       setLoginError(null);
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      });
       
-      const localUsers = [
-        { email: 'ereshmb@gmail.com', pass: '10001', name: 'Eresh M B', role: 'Technician' },
-        { email: 'decentsachin.143@gmail.com', pass: '10002', name: 'Sachin', role: 'Technician' },
-        { email: 'nidhishri767@gmail.com', pass: '10003', name: 'Nidhishri', role: 'Technician' },
-        { email: 'fugensys@gmail.com', pass: '10004', name: 'Fugensys Admin', role: 'Technician' }
-      ];
-      const matchedLocal = localUsers.find(
-        u => u.email.toLowerCase() === loginEmail.trim().toLowerCase() && u.pass === loginPassword.trim()
-      );
-
-      try {
-        const res = await fetch('/api/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: loginEmail, password: loginPassword })
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          setCurrentUser(data.user);
-          localStorage.setItem('ac_tech_user', JSON.stringify(data.user));
-          setLoginEmail('');
-          setLoginPassword('');
-          return;
-        } else {
-          // If server explicitly unauthorized, let's bubble it up
-          if (res.status === 401 || res.status === 403) {
-            let errMsg = 'Authentication failed';
-            try {
-              const errData = await res.json();
-              errMsg = errData.error || errMsg;
-            } catch (e) {}
-            throw new Error(errMsg);
-          }
-          // Other status codes (like 404 on redirects) fall through to the local users check below
-        }
-      } catch (serverErr: any) {
-        console.warn('Server auth failed/blocked, checking local fallback credentials:', serverErr.message);
-        if (matchedLocal) {
-          const user = { email: matchedLocal.email, name: matchedLocal.name, role: matchedLocal.role };
-          setCurrentUser(user);
-          localStorage.setItem('ac_tech_user', JSON.stringify(user));
-          setLoginEmail('');
-          setLoginPassword('');
-          return;
-        } else {
-          setLoginError(serverErr.message || 'Server login error and no matching fallback account found.');
-          return;
-        }
-      }
-
-      // If server responded without error catch but also didn't succeed (and not 401/403)
-      if (matchedLocal) {
-        const user = { email: matchedLocal.email, name: matchedLocal.name, role: matchedLocal.role };
-        setCurrentUser(user);
-        localStorage.setItem('ac_tech_user', JSON.stringify(user));
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user);
+        localStorage.setItem('ac_tech_user', JSON.stringify(data.user));
         setLoginEmail('');
         setLoginPassword('');
       } else {
-        setLoginError('Invalid technician credentials. Please use your authorized email and 5-digit password serial.');
+        let errMsg = 'Invalid technician credentials.';
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch (e) {}
+        setLoginError(errMsg);
       }
     } catch (err: any) {
       console.error('Login error:', err);
@@ -1503,7 +1515,6 @@ CREATE TABLE order_notes (
                                 { status: 'Accepted', label: 'Accepted' },
                                 { status: 'In Progress', label: 'In Progress' },
                                 { status: 'On Hold', label: 'On Hold' },
-                                { status: 'Closed', label: 'Closed' },
                               ].map((step) => {
                                 const isActive = selectedOrder.technician_status === step.status;
                                 return (
@@ -1676,7 +1687,7 @@ CREATE TABLE order_notes (
                   </div>
 
                   {/* FINAL SIGNATURE AND COMPLETION PANEL */}
-                  {selectedOrder.technician_status === 'Completed' && (
+                  {selectedOrder.technician_status !== 'Closed' && selectedOrder.technician_status !== 'Rejected' && selectedOrder.technician_status !== 'Assigned' && (
                     <div className="space-y-4 border-t border-slate-800/80 pt-5 bg-indigo-950/10 p-4 rounded-2xl border border-indigo-500/20">
                       <div className="flex items-center space-x-2 text-indigo-400">
                         <PenTool className="w-5 h-5" />
@@ -1684,34 +1695,73 @@ CREATE TABLE order_notes (
                       </div>
 
                       {/* Signature pad */}
-                      <SignaturePad
-                        onSave={(base64) => setTempSignature(base64)}
-                        onClear={() => setTempSignature(null)}
-                      />
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                          Customer Digital Signature <span className="text-emerald-400 font-bold">* Required</span>
+                        </span>
+                        <SignaturePad
+                          onSave={(base64) => setTempSignature(base64)}
+                          onClear={() => setTempSignature(null)}
+                        />
+                      </div>
 
                       {/* Closing comments */}
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Closing Service Remarks</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center block">
+                          <span>Closing Service Remarks</span>
+                          <span className="text-rose-400 font-bold text-[9px] uppercase font-mono tracking-normal">* Required</span>
+                        </label>
                         <textarea
-                          placeholder="Write final diagnostic outcome (e.g., vacuum pressure checked, ambient temperature registered, job done fully)..."
+                          placeholder="Write final diagnostic outcome (e.g., check list done, temperature checked, job done fully)..."
                           value={finalCloseNote}
-                          onChange={(e) => setFinalCloseNote(e.target.value)}
+                          onChange={(e) => {
+                            setFinalCloseNote(e.target.value);
+                            if (e.target.value.trim() !== '') {
+                              setCloseJobError(null);
+                            }
+                          }}
                           rows={2}
                           className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500"
                         />
                       </div>
 
+                      {/* Display Sync/Close Error & Retry */}
+                      {closeJobError && (
+                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl flex items-start space-x-2.5 animate-fadeIn">
+                          <AlertCircle className="w-4 h-4 text-rose-400 mt-0.5 flex-shrink-0" />
+                          <div className="space-y-1.5 flex-1">
+                            <p className="font-bold text-[11px] text-rose-400">WooCommerce Sync Error</p>
+                            <p className="text-[11px] opacity-90 leading-relaxed">{closeJobError}</p>
+                            <button
+                              onClick={() => handleCloseJob(selectedOrder.id)}
+                              className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 underline block mt-1"
+                            >
+                              Retry Closing Job
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <button
                         onClick={() => handleCloseJob(selectedOrder.id)}
-                        disabled={!tempSignature}
+                        disabled={!tempSignature || !finalCloseNote.trim() || isClosingJobLoading}
                         className={`w-full py-2.5 rounded-xl font-extrabold text-xs text-center flex items-center justify-center space-x-1.5 shadow-md transition-all ${
-                          tempSignature
-                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
+                          tempSignature && finalCloseNote.trim() && !isClosingJobLoading
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 cursor-pointer hover:scale-[1.01]'
                             : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/60'
                         }`}
                       >
-                        <Check className="w-4 h-4" />
-                        <span>Confirm Clearance & Close WooCommerce Ticket</span>
+                        {isClosingJobLoading ? (
+                          <>
+                            <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-200 border-t-transparent rounded-full animate-spin mr-1.5" />
+                            <span>Syncing WooCommerce Ticket...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>Confirm Clearance & Close WooCommerce Ticket</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   )}
