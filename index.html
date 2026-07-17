@@ -12,16 +12,28 @@
     <script type="module" src="/src/main.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for (let registration of registrations) {
-            registration.unregister().then(function(success) {
-              if (success) {
-                console.log('Stale Service Worker unregistered successfully to prevent browser caching.');
-              }
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+              console.log('ServiceWorker registered with scope: ', reg.scope);
+              reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                if (installingWorker) {
+                  installingWorker.onstatechange = () => {
+                    if (installingWorker.state === 'installed') {
+                      if (navigator.serviceWorker.controller) {
+                        console.log('New app update available. Please reload.');
+                      } else {
+                        console.log('App content is cached for offline use.');
+                      }
+                    }
+                  };
+                }
+              };
+            })
+            .catch(err => {
+              console.error('ServiceWorker registration failed: ', err);
             });
-          }
-        }).catch(function(err) {
-          console.error('Error unregistering service workers:', err);
         });
       }
     </script>

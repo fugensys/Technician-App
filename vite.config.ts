@@ -1,11 +1,35 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(), 
+      tailwindcss(),
+      {
+        name: 'version-service-worker',
+        buildStart() {
+          try {
+            const swPath = path.resolve(__dirname, 'public/sw.js');
+            if (fs.existsSync(swPath)) {
+              let swContent = fs.readFileSync(swPath, 'utf8');
+              const version = Date.now();
+              swContent = swContent.replace(
+                /const CACHE_NAME = ['"][^'"]+['"];/,
+                `const CACHE_NAME = 'ac-tech-portal-v${version}';`
+              );
+              fs.writeFileSync(swPath, swContent, 'utf8');
+              console.log(`[Service Worker] Injected cache version: ac-tech-portal-v${version}`);
+            }
+          } catch (err) {
+            console.error('Failed to inject service worker version:', err);
+          }
+        }
+      }
+    ],
     define: {
       'process.env.GOOGLE_MAPS_PLATFORM_KEY': JSON.stringify(process.env.GOOGLE_MAPS_PLATFORM_KEY || '')
     },
