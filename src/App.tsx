@@ -338,7 +338,13 @@ export default function App() {
 
       // Check active technician email to query filtered list
       const emailQuery = techEmail !== undefined ? techEmail : (currentUser ? currentUser.email : null);
-      const url = emailQuery ? `/api/orders?tech_email=${encodeURIComponent(emailQuery)}` : '/api/orders';
+      if (!emailQuery) {
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+
+      const url = `/api/orders?tech_email=${encodeURIComponent(emailQuery)}`;
 
       const ordersRes = await apiFetch(url).catch(() => null);
       if (ordersRes && ordersRes.ok) {

@@ -497,8 +497,8 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Protect all diagnostic routes. Can only be accessed with a valid Session Token
-app.get('/api/config-status', authenticateToken as any, (req, res) => {
+// Diagnostics route to check configuration status. Publicly accessible so frontend can display database connectivity on the login page.
+app.get('/api/config-status', (req, res) => {
   const { WOOCOMMERCE_API_URL, WOOCOMMERCE_CONSUMER_KEY, WOOCOMMERCE_CONSUMER_SECRET } = process.env;
   res.json({
     hasWooCommerceConfigured: Boolean(WOOCOMMERCE_API_URL && WOOCOMMERCE_CONSUMER_KEY && WOOCOMMERCE_CONSUMER_SECRET),
