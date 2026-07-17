@@ -1593,36 +1593,44 @@ CREATE TABLE order_notes (
                     </div>
 
                     {/* INTERACTIVE MAP COMPONENT */}
-                    <div className="h-44 w-full rounded-xl overflow-hidden border border-slate-800 relative bg-slate-950">
-                      {hasValidMapsKey ? (
-                        <APIProvider apiKey={GOOGLE_MAPS_KEY} version="weekly">
-                          <Map
-                            defaultCenter={{ lat: selectedOrder.latitude, lng: selectedOrder.longitude }}
-                            defaultZoom={13}
-                            mapId="DEMO_MAP_ID"
-                            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-                            style={{ width: '100%', height: '100%' }}
-                            disableDefaultUI={true}
-                          >
-                            <AdvancedMarker position={{ lat: selectedOrder.latitude, lng: selectedOrder.longitude }} title={selectedOrder.customer_name}>
-                              <Pin background="#ef4444" glyphColor="#fff" />
-                            </AdvancedMarker>
-                          </Map>
-                        </APIProvider>
-                      ) : (
-                        // Clean, high-fidelity fallback using standard Google Maps embed (perfect coordinate accuracy)
-                        <iframe
-                          title="Customer Location Embed"
-                          width="100%"
-                          height="100%"
-                          style={{ border: 0 }}
-                          loading="lazy"
-                          allowFullScreen
-                          referrerPolicy="no-referrer"
-                          src={`https://maps.google.com/maps?q=${selectedOrder.latitude},${selectedOrder.longitude}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
-                        />
-                      )}
-                    </div>
+                    {selectedOrder.latitude && selectedOrder.longitude && selectedOrder.latitude !== 0 && selectedOrder.longitude !== 0 ? (
+                      <div className="h-44 w-full rounded-xl overflow-hidden border border-slate-800 relative bg-slate-950">
+                        {hasValidMapsKey ? (
+                          <APIProvider apiKey={GOOGLE_MAPS_KEY} version="weekly">
+                            <Map
+                              defaultCenter={{ lat: selectedOrder.latitude, lng: selectedOrder.longitude }}
+                              defaultZoom={13}
+                              mapId="DEMO_MAP_ID"
+                              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                              style={{ width: '100%', height: '100%' }}
+                              disableDefaultUI={true}
+                            >
+                              <AdvancedMarker position={{ lat: selectedOrder.latitude, lng: selectedOrder.longitude }} title={selectedOrder.customer_name}>
+                                <Pin background="#ef4444" glyphColor="#fff" />
+                              </AdvancedMarker>
+                            </Map>
+                          </APIProvider>
+                        ) : (
+                          // Clean, high-fidelity fallback using standard Google Maps embed (perfect coordinate accuracy)
+                          <iframe
+                            title="Customer Location Embed"
+                            width="100%"
+                            height="100%"
+                            style={{ border: 0 }}
+                            loading="lazy"
+                            allowFullScreen
+                            referrerPolicy="no-referrer"
+                            src={`https://maps.google.com/maps?q=${selectedOrder.latitude},${selectedOrder.longitude}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-32 w-full rounded-xl border border-dashed border-slate-800/80 bg-slate-950/40 flex flex-col items-center justify-center text-center p-4">
+                        <MapPin className="w-5 h-5 text-slate-500 mb-1.5 flex-shrink-0 animate-pulse" />
+                        <p className="text-[11px] font-semibold text-slate-300">Map preview unavailable</p>
+                        <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] leading-relaxed">Coordinates not resolved. Please use 'Get Directions' or 'Search GPS' instead.</p>
+                      </div>
+                    )}
                   </div>
 
                   {/* ORDER ITEM INFORMATION */}

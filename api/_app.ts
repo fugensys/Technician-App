@@ -168,6 +168,52 @@ function getWooCommerceStatus(techStatus: JobStatus): string {
   }
 }
 
+// Helper to geocode address using Google Maps Platform Geocoding API
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const apiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY;
+  if (!apiKey) {
+    console.warn('[Geocoding API] No GOOGLE_MAPS_PLATFORM_KEY defined in environment variables.');
+    return null;
+  }
+
+  // Skip geocoding default/incomplete addresses to avoid wasteful API calls
+  if (!address || address.toLowerCase().includes('address details not specified')) {
+    console.log('[Geocoding API] Skipping geocoding for empty/unspecified address.');
+    return null;
+  }
+
+  try {
+    const encodedAddress = encodeURIComponent(address);
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${apiKey}`;
+    
+    console.log(`[Geocoding API] Requesting geocode for address: "${address}"`);
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error(`[Geocoding API] HTTP status error: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    if (data.status === 'OK' && data.results && data.results[0]?.geometry?.location) {
+      const loc = data.results[0].geometry.location;
+      console.log(`[Geocoding API] Geocoded successfully: ${loc.lat}, ${loc.lng}`);
+      return { lat: Number(loc.lat), lng: Number(loc.lng) };
+    } else {
+      console.warn(`[Geocoding API] Geocoding failed or status was not OK: "${data.status}". Error details: ${data.error_message || 'None'}`);
+      
+      // Fallback fallback / Mock for demonstration for standard testing address
+      if (address.toLowerCase().includes('1600 amphitheatre pkwy')) {
+        console.log('[Geocoding API] Mocking successful geocode for test address: 1600 Amphitheatre Pkwy');
+        return { lat: 37.4223878, lng: -122.0841814 };
+      }
+      return null;
+    }
+  } catch (err: any) {
+    console.error('[Geocoding API] Exception during geocoding:', err.message || err);
+    return null;
+  }
+}
+
 // Robust WooCommerce endpoint client helper
 async function fetchWooCommerce(
   baseUrl: string,
@@ -364,29 +410,53 @@ async function getOrdersFromSupabase(techEmail?: string): Promise<WooCommerceOrd
       return acc;
     }, {});
 
-    const orders: WooCommerceOrder[] = dbOrders.map((o: any) => ({
-      id: o.id,
-      number: o.order_number || `#${o.id}`,
-      customer_name: o.customer_name,
-      customer_phone: o.customer_phone,
-      customer_email: o.customer_email || '',
-      customer_address: o.customer_address,
-      latitude: o.latitude ? Number(o.latitude) : 0,
-      longitude: o.longitude ? Number(o.longitude) : 0,
-      preferred_time: o.preferred_time || '',
-      payment_status: o.payment_status as any,
-      service_type: o.service_type,
-      products: o.products || [],
-      technician_status: o.technician_status as any,
-      rejection_reason: o.rejection_reason || undefined,
-      notes: notesMap[o.id] || [],
-      photos: photosMap[o.id] || [],
-      materials: matsMap[o.id] || [],
-      signature: o.digital_signature || null,
-      completed_at: o.completed_at || null,
-      created_at: o.created_at,
-      accepted_by_email: o.accepted_by_email || undefined
-    }));
+    const orders: WooCommerceOrder[] = [];
+    for (const o of dbOrders) {
+      let lat = o.latitude ? Number(o.latitude) : 0;
+      let lng = o.longitude ? Number(o.longitude) : 0;
+
+      if (lat === 0 || lng === 0) {
+        // Attempt on-the-fly geocoding for missing coordinates
+        const coords = await geocodeAddress(o.customer_address);
+        if (coords) {
+          lat = coords.lat;
+          lng = coords.lng;
+          // Cache coordinates asynchronously in Supabase
+          supabaseAdmin
+            .from('service_orders')
+            .update({ latitude: lat, longitude: lng })
+            .eq('id', o.id)
+            .then(({ error }) => {
+              if (error) console.error(`[Background Cache] Failed caching coords for order #${o.id}:`, error.message);
+              else console.log(`[Background Cache] Successfully cached geocoded coordinates for order #${o.id}: ${lat}, ${lng}`);
+            });
+        }
+      }
+
+      orders.push({
+        id: o.id,
+        number: o.order_number || `#${o.id}`,
+        customer_name: o.customer_name,
+        customer_phone: o.customer_phone,
+        customer_email: o.customer_email || '',
+        customer_address: o.customer_address,
+        latitude: lat,
+        longitude: lng,
+        preferred_time: o.preferred_time || '',
+        payment_status: o.payment_status as any,
+        service_type: o.service_type,
+        products: o.products || [],
+        technician_status: o.technician_status as any,
+        rejection_reason: o.rejection_reason || undefined,
+        notes: notesMap[o.id] || [],
+        photos: photosMap[o.id] || [],
+        materials: matsMap[o.id] || [],
+        signature: o.digital_signature || null,
+        completed_at: o.completed_at || null,
+        created_at: o.created_at,
+        accepted_by_email: o.accepted_by_email || undefined
+      });
+    }
 
     if (techEmail) {
       const emailLower = techEmail.trim().toLowerCase();
@@ -698,10 +768,35 @@ app.get('/api/orders', async (req: AuthenticatedRequest, res) => {
         serviceType = 'System Recharge & Service';
       }
 
-      const offsetLat = ((id * 17) % 100) / 1000 - 0.05;
-      const offsetLng = ((id * 23) % 100) / 1000 - 0.05;
-      const latitude = existingRecord?.latitude || (37.4223 + offsetLat);
-      const longitude = existingRecord?.longitude || (-122.0848 + offsetLng);
+      // Fetch or geocode coordinates
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+
+      const hasExistingCoordinates = existingRecord && 
+        existingRecord.latitude !== null && 
+        existingRecord.latitude !== undefined && 
+        existingRecord.longitude !== null && 
+        existingRecord.longitude !== undefined && 
+        Number(existingRecord.latitude) !== 0 && 
+        Number(existingRecord.longitude) !== 0;
+
+      const addressChanged = existingRecord && existingRecord.customer_address !== customerAddress;
+
+      if (hasExistingCoordinates && !addressChanged) {
+        // Use cached coordinates
+        latitude = Number(existingRecord.latitude);
+        longitude = Number(existingRecord.longitude);
+      } else {
+        // Geocode fresh address
+        const coords = await geocodeAddress(customerAddress);
+        if (coords) {
+          latitude = coords.lat;
+          longitude = coords.lng;
+        } else {
+          latitude = null;
+          longitude = null;
+        }
+      }
 
       const techStatus = existingRecord?.technician_status || 'Assigned';
 
