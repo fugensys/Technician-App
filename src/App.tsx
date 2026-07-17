@@ -280,6 +280,7 @@ export default function App() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
 
   // Fetch initial configuration & orders on change of technician user context
   useEffect(() => {
@@ -457,7 +458,13 @@ export default function App() {
       
       console.log(`[FRONTEND_API_RECEIVE] Received response for Accept order ${orderId}: ${res.status}`);
       if (res.ok) {
-        const { order } = await res.json();
+        const data = await res.json();
+        const { order, wooCommerceSyncFailed, warning } = data;
+        if (wooCommerceSyncFailed) {
+          setSyncWarning(warning || "Update saved, but WooCommerce sync failed — will need to be retried or checked.");
+        } else {
+          setSyncWarning(null);
+        }
         console.log(`[FRONTEND_API_SUCCESS] Accept order ${orderId} succeeded.`);
         // Update local arrays
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
@@ -511,7 +518,13 @@ export default function App() {
 
       console.log(`[FRONTEND_API_RECEIVE] Received response for Reject order ${orderId}: ${res.status}`);
       if (res.ok) {
-        const { order } = await res.json();
+        const data = await res.json();
+        const { order, wooCommerceSyncFailed, warning } = data;
+        if (wooCommerceSyncFailed) {
+          setSyncWarning(warning || "Update saved, but WooCommerce sync failed — will need to be retried or checked.");
+        } else {
+          setSyncWarning(null);
+        }
         console.log(`[FRONTEND_API_SUCCESS] Reject order ${orderId} succeeded.`);
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
         setOrders(updatedOrders);
@@ -561,7 +574,13 @@ export default function App() {
 
       console.log(`[FRONTEND_API_RECEIVE] Received response for status update of order ${orderId}: ${res.status}`);
       if (res.ok) {
-        const { order } = await res.json();
+        const data = await res.json();
+        const { order, wooCommerceSyncFailed, warning } = data;
+        if (wooCommerceSyncFailed) {
+          setSyncWarning(warning || "Update saved, but WooCommerce sync failed — will need to be retried or checked.");
+        } else {
+          setSyncWarning(null);
+        }
         console.log(`[FRONTEND_API_SUCCESS] Status update of order ${orderId} to ${status} succeeded.`);
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
         setOrders(updatedOrders);
@@ -608,7 +627,13 @@ export default function App() {
 
       console.log(`[FRONTEND_API_RECEIVE] Received response for Add note to order ${orderId}: ${res.status}`);
       if (res.ok) {
-        const { note } = await res.json();
+        const data = await res.json();
+        const { note, wooCommerceSyncFailed, warning } = data;
+        if (wooCommerceSyncFailed) {
+          setSyncWarning(warning || "Update saved, but WooCommerce sync failed — will need to be retried or checked.");
+        } else {
+          setSyncWarning(null);
+        }
         console.log(`[FRONTEND_API_SUCCESS] Add note to order ${orderId} succeeded.`);
         if (selectedOrder && selectedOrder.id === orderId) {
           const updatedSelected = {
@@ -973,6 +998,23 @@ export default function App() {
           </div>
         </div>
       </header>
+      
+      {syncWarning && (
+        <div id="woocommerce-sync-warning-banner" className="bg-amber-500/10 border-b border-amber-500/35 px-4 py-3 text-xs text-amber-300 flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center space-x-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 animate-bounce" />
+            <span>
+              <strong>Warning:</strong> {syncWarning}
+            </span>
+          </div>
+          <button
+            onClick={() => setSyncWarning(null)}
+            className="text-amber-400 hover:text-amber-300 font-bold px-2 py-0.5 rounded border border-amber-500/20 hover:border-amber-500/40 transition-all text-[10px]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {isOfflineMode && (
         <div id="offline-sandbox-banner" className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 text-center text-xs text-amber-300 flex items-center justify-center space-x-2 animate-fadeIn">

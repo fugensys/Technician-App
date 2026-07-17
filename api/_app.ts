@@ -942,12 +942,21 @@ app.post('/api/orders/:id/accept', async (req: AuthenticatedRequest, res) => {
     });
 
     const mappedWooStatus = getWooCommerceStatus('Accepted');
-    await syncToWooCommerce(id, mappedWooStatus, `Technician (${techEmail}) accepted this service request.`);
+    const syncSuccess = await syncToWooCommerce(id, mappedWooStatus, `Technician (${techEmail}) accepted this service request.`);
+
+    if (!syncSuccess) {
+      console.error(`[API_ERROR] WooCommerce Sync failed on Accept Order ID: ${id}`);
+    }
 
     const updatedOrders = await getOrdersFromSupabase(techEmail);
     const updatedOrder = updatedOrders.find(o => o.id === id);
 
-    return res.json({ success: true, order: updatedOrder });
+    return res.json({
+      success: true,
+      order: updatedOrder,
+      wooCommerceSyncFailed: !syncSuccess,
+      warning: syncSuccess ? undefined : "Saved locally, but failed to sync to WooCommerce. It may not reflect on your WooCommerce store yet."
+    });
   } catch (err: any) {
     console.error('[Database Error] Failed to accept order:', err.message || err);
     return res.status(500).json({ error: 'Failed to accept order.' });
@@ -989,12 +998,21 @@ app.post('/api/orders/:id/reject', async (req: AuthenticatedRequest, res) => {
     });
 
     const mappedWooStatus = getWooCommerceStatus('Rejected');
-    await syncToWooCommerce(id, mappedWooStatus, `Job rejected by technician. Reason: ${reason || 'Unspecified'}`);
+    const syncSuccess = await syncToWooCommerce(id, mappedWooStatus, `Job rejected by technician. Reason: ${reason || 'Unspecified'}`);
+
+    if (!syncSuccess) {
+      console.error(`[API_ERROR] WooCommerce Sync failed on Reject Order ID: ${id}`);
+    }
 
     const updatedOrders = await getOrdersFromSupabase(techEmail);
     const updatedOrder = updatedOrders.find(o => o.id === id);
 
-    return res.json({ success: true, order: updatedOrder });
+    return res.json({
+      success: true,
+      order: updatedOrder,
+      wooCommerceSyncFailed: !syncSuccess,
+      warning: syncSuccess ? undefined : "Saved locally, but failed to sync to WooCommerce. It may not reflect on your WooCommerce store yet."
+    });
   } catch (err: any) {
     console.error('[Database Error] Failed to reject order:', err.message || err);
     return res.status(500).json({ error: 'Failed to reject order.' });
@@ -1080,12 +1098,21 @@ app.post('/api/orders/:id/status', async (req: AuthenticatedRequest, res) => {
     });
 
     const mappedWooStatus = getWooCommerceStatus(status);
-    await syncToWooCommerce(id, mappedWooStatus, `Work Progress: Technician ${readableStatus}.`);
+    const syncSuccess = await syncToWooCommerce(id, mappedWooStatus, `Work Progress: Technician ${readableStatus}.`);
+
+    if (!syncSuccess) {
+      console.error(`[API_ERROR] WooCommerce Sync failed on Status Update of Order ID: ${id} to status: ${status}`);
+    }
 
     const updatedOrders = await getOrdersFromSupabase(techEmail);
     const updatedOrder = updatedOrders.find(o => o.id === id);
 
-    return res.json({ success: true, order: updatedOrder });
+    return res.json({
+      success: true,
+      order: updatedOrder,
+      wooCommerceSyncFailed: !syncSuccess,
+      warning: syncSuccess ? undefined : "Saved locally, but failed to sync to WooCommerce. It may not reflect on your WooCommerce store yet."
+    });
   } catch (err: any) {
     console.error('[Database Error] Failed to update status:', err.message || err);
     return res.status(500).json({ error: 'Failed to update order status.' });
@@ -1160,9 +1187,18 @@ app.post('/api/orders/:id/notes', async (req: AuthenticatedRequest, res) => {
     const currentTechStatus = order?.technician_status || 'Accepted';
     const mappedWooStatus = getWooCommerceStatus(currentTechStatus);
 
-    await syncToWooCommerce(id, mappedWooStatus, `Technician Note: ${messageTrimmed}`);
+    const syncSuccess = await syncToWooCommerce(id, mappedWooStatus, `Technician Note: ${messageTrimmed}`);
 
-    return res.json({ success: true, note: newNote });
+    if (!syncSuccess) {
+      console.error(`[API_ERROR] WooCommerce Sync failed on Add Note of Order ID: ${id}`);
+    }
+
+    return res.json({
+      success: true,
+      note: newNote,
+      wooCommerceSyncFailed: !syncSuccess,
+      warning: syncSuccess ? undefined : "Saved locally, but failed to sync to WooCommerce. It may not reflect on your WooCommerce store yet."
+    });
   } catch (err: any) {
     console.error('[Database Error] Failed to write note:', err.message || err);
     return res.status(500).json({ error: 'Failed to record work comment.' });
