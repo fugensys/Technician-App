@@ -173,7 +173,31 @@ const filterOrdersForClient = (ordersList: WooCommerceOrder[], techEmail: string
   });
 };
 
+// Helper to parse a variety of timezone-naive/ISO/UTC date formats robustly for sorting
+const parseNoteTimestamp = (ts: any): number => {
+  if (!ts) return 0;
+  if (typeof ts === 'number') return ts;
+  let s = String(ts).trim();
+  // Check if it's purely digits (milliseconds timestamp)
+  if (/^\d+$/.test(s)) {
+    return parseInt(s, 10);
+  }
+  // If it's WooCommerce format without Z/offset (e.g. "2026-07-17T11:33:00" or "2026-07-17 11:33:00")
+  // treat it as UTC consistently with technician logs which are generated in UTC ISO format.
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}$/.test(s)) {
+    s = s.replace(' ', 'T') + 'Z';
+  } else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}$/.test(s)) {
+    s = s.replace(' ', 'T') + ':00Z';
+  }
+  const d = new Date(s);
+  const time = d.getTime();
+  return isNaN(time) ? 0 : time;
+};
+
 export default function App() {
+  // Synchronous in-flight request tracker to prevent stale-closure duplicate submissions
+  const inFlightRequests = useRef<Set<string>>(new Set());
+
   const [orders, setOrders] = useState<WooCommerceOrder[]>([]);
   const [stats, setStats] = useState<AppStats>({ assigned: 0, accepted: 0, completed: 0, rejected: 0 });
   const [selectedOrder, setSelectedOrder] = useState<WooCommerceOrder | null>(null);
@@ -407,16 +431,34 @@ export default function App() {
 
   // Accept Order Workflow
   const handleAcceptOrder = async (orderId: number) => {
-    if (isAcceptingOrderId === orderId) return;
+    const actionKey = `accept-${orderId}`;
+    console.log(`[FRONTEND_HANDLER] handleAcceptOrder invoked for order ${orderId}. Current in-flight actions:`, Array.from(inFlightRequests.current));
+    
+    if (inFlightRequests.current.has(actionKey)) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate accept request for order ${orderId} (Already in-flight!)`);
+      return;
+    }
+    
+    if (isAcceptingOrderId === orderId) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate accept request for order ${orderId} (isAcceptingOrderId === orderId)`);
+      return;
+    }
+
+    inFlightRequests.current.add(actionKey);
+    setIsAcceptingOrderId(orderId);
+    console.log(`[FRONTEND_API_SEND] Sending Accept order POST request for order ${orderId}`);
+
     try {
-      setIsAcceptingOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: currentUser ? currentUser.email : '' })
       });
+      
+      console.log(`[FRONTEND_API_RECEIVE] Received response for Accept order ${orderId}: ${res.status}`);
       if (res.ok) {
         const { order } = await res.json();
+        console.log(`[FRONTEND_API_SUCCESS] Accept order ${orderId} succeeded.`);
         // Update local arrays
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
         setOrders(updatedOrders);
@@ -425,29 +467,52 @@ export default function App() {
         setActiveTab('active');
       } else if (res.status === 409) {
         const errData = await res.json();
+        console.warn(`[FRONTEND_API_CONFLICT] Accept order ${orderId} conflict: ${errData.error}`);
         alert(errData.error || 'This job has already been accepted by another technician.');
         // Refresh order list
         fetchConfigAndOrders();
+      } else {
+        console.error(`[FRONTEND_API_ERROR] Accept order ${orderId} failed with status: ${res.status}`);
       }
     } catch (e) {
-      console.error(e);
+      console.error('[FRONTEND_API_EXCEPTION] Accept order exception:', e);
     } finally {
+      inFlightRequests.current.delete(actionKey);
       setIsAcceptingOrderId(null);
+      console.log(`[FRONTEND_HANDLER] handleAcceptOrder completed for order ${orderId}. Removed action key.`);
     }
   };
 
   // Reject Order Workflow
   const handleRejectOrder = async (orderId: number, reason: string) => {
-    if (isRejectingOrderId === orderId) return;
+    const actionKey = `reject-${orderId}`;
+    console.log(`[FRONTEND_HANDLER] handleRejectOrder invoked for order ${orderId}. Current in-flight actions:`, Array.from(inFlightRequests.current));
+
+    if (inFlightRequests.current.has(actionKey)) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate reject request for order ${orderId} (Already in-flight!)`);
+      return;
+    }
+
+    if (isRejectingOrderId === orderId) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate reject request for order ${orderId} (isRejectingOrderId === orderId)`);
+      return;
+    }
+
+    inFlightRequests.current.add(actionKey);
+    setIsRejectingOrderId(orderId);
+    console.log(`[FRONTEND_API_SEND] Sending Reject order POST request for order ${orderId}`);
+
     try {
-      setIsRejectingOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
       });
+
+      console.log(`[FRONTEND_API_RECEIVE] Received response for Reject order ${orderId}: ${res.status}`);
       if (res.ok) {
         const { order } = await res.json();
+        console.log(`[FRONTEND_API_SUCCESS] Reject order ${orderId} succeeded.`);
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
         setOrders(updatedOrders);
         calculateStats(updatedOrders);
@@ -456,50 +521,95 @@ export default function App() {
           setSelectedOrder(order);
         }
         setActiveTab('dashboard');
+      } else {
+        console.error(`[FRONTEND_API_ERROR] Reject order ${orderId} failed with status: ${res.status}`);
       }
     } catch (e) {
-      console.error(e);
+      console.error('[FRONTEND_API_EXCEPTION] Reject order exception:', e);
     } finally {
+      inFlightRequests.current.delete(actionKey);
       setIsRejectingOrderId(null);
+      console.log(`[FRONTEND_HANDLER] handleRejectOrder completed for order ${orderId}. Removed action key.`);
     }
   };
 
   // Progress Status Update Workflow
   const handleUpdateStatus = async (orderId: number, status: JobStatus) => {
-    if (isUpdatingStatusOrderId === orderId) return;
+    const actionKey = `status-${orderId}`;
+    console.log(`[FRONTEND_HANDLER] handleUpdateStatus invoked for order ${orderId}, status: ${status}. Current in-flight actions:`, Array.from(inFlightRequests.current));
+
+    if (inFlightRequests.current.has(actionKey)) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate status update request for order ${orderId} to ${status} (Already in-flight!)`);
+      return;
+    }
+
+    if (isUpdatingStatusOrderId === orderId) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate status update request for order ${orderId} to ${status} (isUpdatingStatusOrderId === orderId)`);
+      return;
+    }
+
+    inFlightRequests.current.add(actionKey);
+    setIsUpdatingStatusOrderId(orderId);
+    console.log(`[FRONTEND_API_SEND] Sending Status update POST request for order ${orderId} to ${status}`);
+
     try {
-      setIsUpdatingStatusOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
+
+      console.log(`[FRONTEND_API_RECEIVE] Received response for status update of order ${orderId}: ${res.status}`);
       if (res.ok) {
         const { order } = await res.json();
+        console.log(`[FRONTEND_API_SUCCESS] Status update of order ${orderId} to ${status} succeeded.`);
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
         setOrders(updatedOrders);
         calculateStats(updatedOrders);
         setSelectedOrder(order);
+      } else {
+        console.error(`[FRONTEND_API_ERROR] Status update of order ${orderId} failed with status: ${res.status}`);
       }
     } catch (e) {
-      console.error(e);
+      console.error('[FRONTEND_API_EXCEPTION] Status update exception:', e);
     } finally {
+      inFlightRequests.current.delete(actionKey);
       setIsUpdatingStatusOrderId(null);
+      console.log(`[FRONTEND_HANDLER] handleUpdateStatus completed for order ${orderId}, status: ${status}. Removed action key.`);
     }
   };
 
   // Add Note Workflow
   const handleAddNote = async (orderId: number) => {
-    if (!newNoteText.trim() || isAddingNoteOrderId === orderId) return;
+    if (!newNoteText.trim()) return;
+    const actionKey = `note-${orderId}`;
+    console.log(`[FRONTEND_HANDLER] handleAddNote invoked for order ${orderId}. Current in-flight actions:`, Array.from(inFlightRequests.current));
+
+    if (inFlightRequests.current.has(actionKey)) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate add note request for order ${orderId} (Already in-flight!)`);
+      return;
+    }
+
+    if (isAddingNoteOrderId === orderId) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate add note request for order ${orderId} (isAddingNoteOrderId === orderId)`);
+      return;
+    }
+
+    inFlightRequests.current.add(actionKey);
+    setIsAddingNoteOrderId(orderId);
+    console.log(`[FRONTEND_API_SEND] Sending Add note POST request for order ${orderId}`);
+
     try {
-      setIsAddingNoteOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: newNoteText })
       });
+
+      console.log(`[FRONTEND_API_RECEIVE] Received response for Add note to order ${orderId}: ${res.status}`);
       if (res.ok) {
         const { note } = await res.json();
+        console.log(`[FRONTEND_API_SUCCESS] Add note to order ${orderId} succeeded.`);
         if (selectedOrder && selectedOrder.id === orderId) {
           const updatedSelected = {
             ...selectedOrder,
@@ -509,11 +619,15 @@ export default function App() {
           setOrders(orders.map(o => o.id === orderId ? updatedSelected : o));
         }
         setNewNoteText('');
+      } else {
+        console.error(`[FRONTEND_API_ERROR] Add note to order ${orderId} failed with status: ${res.status}`);
       }
     } catch (e) {
-      console.error(e);
+      console.error('[FRONTEND_API_EXCEPTION] Add note exception:', e);
     } finally {
+      inFlightRequests.current.delete(actionKey);
       setIsAddingNoteOrderId(null);
+      console.log(`[FRONTEND_HANDLER] handleAddNote completed for order ${orderId}. Removed action key.`);
     }
   };
 
@@ -569,10 +683,25 @@ export default function App() {
       return;
     }
 
-    try {
-      setIsClosingJobLoading(true);
-      setCloseJobError(null);
+    const actionKey = `close-${orderId}`;
+    console.log(`[FRONTEND_HANDLER] handleCloseJob invoked for order ${orderId}. Current in-flight actions:`, Array.from(inFlightRequests.current));
 
+    if (inFlightRequests.current.has(actionKey)) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate close job request for order ${orderId} (Already in-flight!)`);
+      return;
+    }
+
+    if (isClosingJobLoading) {
+      console.warn(`[FRONTEND_HANDLER] Blocked duplicate close job request for order ${orderId} (isClosingJobLoading is true)`);
+      return;
+    }
+
+    inFlightRequests.current.add(actionKey);
+    setIsClosingJobLoading(true);
+    setCloseJobError(null);
+    console.log(`[FRONTEND_API_SEND] Sending Close job POST request for order ${orderId}`);
+
+    try {
       const res = await apiFetch(`/api/orders/${orderId}/close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -582,8 +711,10 @@ export default function App() {
         })
       });
 
+      console.log(`[FRONTEND_API_RECEIVE] Received response for Close job ${orderId}: ${res.status}`);
       if (res.ok) {
         const { order } = await res.json();
+        console.log(`[FRONTEND_API_SUCCESS] Close job ${orderId} succeeded.`);
         const updatedOrders = orders.map(o => o.id === orderId ? order : o);
         setOrders(updatedOrders);
         calculateStats(updatedOrders);
@@ -594,13 +725,16 @@ export default function App() {
         setActiveTab('completed');
       } else {
         const errData = await res.json().catch(() => ({}));
+        console.error(`[FRONTEND_API_ERROR] Close job ${orderId} failed:`, errData.error);
         setCloseJobError(errData.error || 'Failed to close the job. WooCommerce sync might have failed.');
       }
     } catch (e: any) {
-      console.error(e);
+      console.error('[FRONTEND_API_EXCEPTION] Close job exception:', e);
       setCloseJobError(e?.message || 'Network or connection error. Please check your credentials and try again.');
     } finally {
+      inFlightRequests.current.delete(actionKey);
       setIsClosingJobLoading(false);
+      console.log(`[FRONTEND_HANDLER] handleCloseJob completed for order ${orderId}. Removed action key.`);
     }
   };
 
@@ -1566,7 +1700,10 @@ CREATE TABLE order_notes (
                                   <button
                                     key={step.status}
                                     disabled={isThisUpdating}
-                                    onClick={() => handleUpdateStatus(selectedOrder.id, step.status as JobStatus)}
+                                    onClick={() => {
+                                      console.log(`[FRONTEND_CLICK] Status update button clicked for order ${selectedOrder.id} - target status: ${step.status}`);
+                                      handleUpdateStatus(selectedOrder.id, step.status as JobStatus);
+                                    }}
                                     className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed ${
                                       isActive
                                         ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
@@ -1710,12 +1847,24 @@ CREATE TABLE order_notes (
                     {selectedOrder.notes.length > 0 ? (
                       <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
                         {[...selectedOrder.notes]
-                          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                          .sort((a, b) => parseNoteTimestamp(b.timestamp) - parseNoteTimestamp(a.timestamp))
                           .map((n) => (
                             <div key={n.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
                               <div className="flex justify-between text-[10px] font-bold text-slate-400">
                                 <span className={n.author.includes('Self') ? 'text-indigo-400' : 'text-slate-300'}>{n.author}</span>
-                                <span className="text-slate-500 font-mono">{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span className="text-slate-500 font-mono">
+                                  {(() => {
+                                    const parsed = parseNoteTimestamp(n.timestamp);
+                                    if (parsed === 0) return 'N/A';
+                                    const d = new Date(parsed);
+                                    return d.toLocaleString([], {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    });
+                                  })()}
+                                </span>
                               </div>
                               <p className="text-slate-200 leading-relaxed font-medium">{n.message}</p>
                             </div>

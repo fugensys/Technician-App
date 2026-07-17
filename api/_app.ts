@@ -888,6 +888,8 @@ app.post('/api/orders/:id/accept', async (req: AuthenticatedRequest, res) => {
     return res.status(401).json({ error: 'Identity verification failed.' });
   }
 
+  console.log(`[API_LOG] Accept Order endpoint hit. Order ID: ${id}, Technician: ${techEmail}`);
+
   try {
     const { data: order, error } = await supabaseAdmin
       .from('service_orders')
@@ -896,16 +898,27 @@ app.post('/api/orders/:id/accept', async (req: AuthenticatedRequest, res) => {
       .single();
 
     if (error || !order) {
+      console.warn(`[API_LOG] Accept failed. Order ID: ${id} not found in database.`);
       return res.status(404).json({ error: 'Order not found.' });
     }
 
     // Stop another technician from overwriting an already-accepted job
     if (order.technician_status !== 'Assigned' && order.accepted_by_email && order.accepted_by_email !== techEmail) {
+      console.warn(`[API_LOG] Accept conflict. Order ID: ${id} already accepted by: ${order.accepted_by_email}`);
       return res.status(409).json({
         error: `Conflict: This job has already been accepted by technician ${order.accepted_by_email}.`
       });
     }
 
+    // Backend Idempotency check: if already accepted by this technician, return success directly
+    if (order.technician_status === 'Accepted' && order.accepted_by_email === techEmail) {
+      console.log(`[API_LOG] Order ID: ${id} is already in 'Accepted' state for ${techEmail}. Skipping duplicate database / WooCommerce updates.`);
+      const updatedOrders = await getOrdersFromSupabase(techEmail);
+      const updatedOrder = updatedOrders.find(o => o.id === id);
+      return res.json({ success: true, order: updatedOrder });
+    }
+
+    console.log(`[API_LOG] Proceeding to update Order ID: ${id} status to 'Accepted' for ${techEmail}`);
     const { error: updateErr } = await supabaseAdmin
       .from('service_orders')
       .update({
@@ -1006,7 +1019,28 @@ app.post('/api/orders/:id/status', async (req: AuthenticatedRequest, res) => {
     return res.status(401).json({ error: 'Identity verification failed.' });
   }
 
+  console.log(`[API_LOG] Status Update hit. Order ID: ${id}, Target Status: ${status}, Technician: ${techEmail}`);
+
   try {
+    // Backend Idempotency check: look up current status of order
+    const { data: currentOrder, error: checkErr } = await supabaseAdmin
+      .from('service_orders')
+      .select('technician_status')
+      .eq('id', id)
+      .single();
+
+    if (checkErr || !currentOrder) {
+      console.warn(`[API_LOG] Status update failed. Order ID: ${id} not found in database.`);
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    if (currentOrder.technician_status === status) {
+      console.log(`[API_LOG] Order ID: ${id} is already in status "${status}". Skipping duplicate database and WooCommerce update.`);
+      const updatedOrders = await getOrdersFromSupabase(techEmail);
+      const updatedOrder = updatedOrders.find(o => o.id === id);
+      return res.json({ success: true, order: updatedOrder });
+    }
+
     const timestamp = new Date().toISOString();
     const updatePayload: any = {
       technician_status: status
@@ -1016,6 +1050,7 @@ app.post('/api/orders/:id/status', async (req: AuthenticatedRequest, res) => {
       updatePayload.completed_at = timestamp;
     }
 
+    console.log(`[API_LOG] Performing DB status update for Order ID: ${id} to: ${status}`);
     const { error: updateErr } = await supabaseAdmin
       .from('service_orders')
       .update(updatePayload)
@@ -1071,7 +1106,39 @@ app.post('/api/orders/:id/notes', async (req: AuthenticatedRequest, res) => {
     return res.status(401).json({ error: 'Identity verification failed.' });
   }
 
+  const messageTrimmed = message.trim();
+  console.log(`[API_LOG] Add Note hit. Order ID: ${id}, Message: "${messageTrimmed}", Technician: ${techEmail}`);
+
   try {
+    // Backend Idempotency check: deduplicate identical notes submitted in rapid succession (10 seconds window)
+    const { data: recentNotes, error: notesErr } = await supabaseAdmin
+      .from('order_notes')
+      .select('*')
+      .eq('order_id', id)
+      .order('timestamp', { ascending: false })
+      .limit(3);
+
+    if (!notesErr && recentNotes && recentNotes.length > 0) {
+      const match = recentNotes.find(n => 
+        n.message === messageTrimmed && 
+        n.author === `Technician (${techEmail})` &&
+        (Date.now() - new Date(n.timestamp).getTime()) < 10000 // 10 seconds window
+      );
+      if (match) {
+        console.warn(`[API_LOG] Blocked duplicate note addition for Order ID: ${id} matching recent note: "${messageTrimmed}" within 10s`);
+        return res.json({ 
+          success: true, 
+          note: {
+            id: match.id,
+            order_id: id,
+            author: match.author,
+            message: match.message,
+            timestamp: match.timestamp
+          }
+        });
+      }
+    }
+
     const timestamp = new Date().toISOString();
     const noteId = `note-${Date.now()}`;
     
@@ -1079,10 +1146,11 @@ app.post('/api/orders/:id/notes', async (req: AuthenticatedRequest, res) => {
       id: noteId,
       order_id: id,
       author: `Technician (${techEmail})`,
-      message: message.trim(),
+      message: messageTrimmed,
       timestamp
     };
 
+    console.log(`[API_LOG] Inserting note into Supabase for Order ID: ${id}`);
     const { error: insertErr } = await supabaseAdmin.from('order_notes').insert(newNote);
     if (insertErr) {
       throw insertErr;
@@ -1092,7 +1160,7 @@ app.post('/api/orders/:id/notes', async (req: AuthenticatedRequest, res) => {
     const currentTechStatus = order?.technician_status || 'Accepted';
     const mappedWooStatus = getWooCommerceStatus(currentTechStatus);
 
-    await syncToWooCommerce(id, mappedWooStatus, `Technician Note: ${message}`);
+    await syncToWooCommerce(id, mappedWooStatus, `Technician Note: ${messageTrimmed}`);
 
     return res.json({ success: true, note: newNote });
   } catch (err: any) {
