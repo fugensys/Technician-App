@@ -30,6 +30,8 @@ import {
   Camera,
   Layers,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Activity,
   PenTool,
   Package,
@@ -201,6 +203,12 @@ export default function App() {
   const [orders, setOrders] = useState<WooCommerceOrder[]>([]);
   const [stats, setStats] = useState<AppStats>({ assigned: 0, accepted: 0, completed: 0, rejected: 0 });
   const [selectedOrder, setSelectedOrder] = useState<WooCommerceOrder | null>(null);
+  const [isNotesExpanded, setIsNotesExpanded] = useState(false);
+
+  // Reset notes expanded state when switching orders
+  useEffect(() => {
+    setIsNotesExpanded(false);
+  }, [selectedOrder?.id]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'assigned' | 'active' | 'completed' | 'config'>('dashboard');
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   
@@ -1775,35 +1783,58 @@ CREATE TABLE order_notes (
                   <div className="space-y-3 border-t border-slate-800/80 pt-5">
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">WooCommerce Order Notes</h3>
                     
-                    {/* Notes List */}
-                    {selectedOrder.notes.length > 0 ? (
-                      <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-                        {[...selectedOrder.notes]
-                          .sort((a, b) => parseNoteTimestamp(b.timestamp) - parseNoteTimestamp(a.timestamp))
-                          .map((n) => (
-                            <div key={n.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
-                              <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                <span className={n.author.includes('Self') ? 'text-indigo-400' : 'text-slate-300'}>{n.author}</span>
-                                <span className="text-slate-500 font-mono">
-                                  {(() => {
-                                    const parsed = parseNoteTimestamp(n.timestamp);
-                                    if (parsed === 0) return 'N/A';
-                                    const d = new Date(parsed);
-                                    return d.toLocaleString([], {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    });
-                                  })()}
-                                </span>
-                              </div>
-                              <p className="text-slate-200 leading-relaxed font-medium">{n.message}</p>
-                            </div>
-                          ))}
+                    {/* Collapsible Notes History Bar */}
+                    <button
+                      type="button"
+                      onClick={() => setIsNotesExpanded(!isNotesExpanded)}
+                      className="w-full bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white transition-all select-none active:scale-[0.99] focus:outline-none"
+                    >
+                      <span className="flex items-center space-x-2">
+                        <span>{isNotesExpanded ? 'Hide Notes History' : 'View Notes History'}</span>
+                        <span className="bg-indigo-950 text-indigo-400 font-mono text-[10px] px-1.5 py-0.5 rounded-md border border-indigo-500/20">
+                          {selectedOrder.notes.length}
+                        </span>
+                      </span>
+                      {isNotesExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-slate-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-slate-400" />
+                      )}
+                    </button>
+
+                    {/* Notes List (Toggleable) */}
+                    {isNotesExpanded && (
+                      <div className="animate-fadeIn">
+                        {selectedOrder.notes.length > 0 ? (
+                          <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                            {[...selectedOrder.notes]
+                              .sort((a, b) => parseNoteTimestamp(b.timestamp) - parseNoteTimestamp(a.timestamp))
+                              .map((n) => (
+                                <div key={n.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
+                                  <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                                    <span className={n.author.includes('Self') ? 'text-indigo-400' : 'text-slate-300'}>{n.author}</span>
+                                    <span className="text-slate-500 font-mono">
+                                      {(() => {
+                                        const parsed = parseNoteTimestamp(n.timestamp);
+                                        if (parsed === 0) return 'N/A';
+                                        const d = new Date(parsed);
+                                        return d.toLocaleString([], {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        });
+                                      })()}
+                                    </span>
+                                  </div>
+                                  <p className="text-slate-200 leading-relaxed font-medium">{n.message}</p>
+                                </div>
+                              ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic py-1 pl-1">No notes logged for this service ticket yet.</p>
+                        )}
                       </div>
-                    ) : (
-                      <p className="text-xs text-slate-500 italic py-1">No notes logged for this service ticket yet.</p>
                     )}
 
                     {/* New Note Form */}
