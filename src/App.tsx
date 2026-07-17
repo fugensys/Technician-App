@@ -1729,8 +1729,108 @@ CREATE TABLE order_notes (
                     </div>
                   )}
 
+                  {/* NOTES PANEL (WOOCOMMERCE INTEGRATED) */}
+                  <div className="space-y-3 border-t border-slate-800/80 pt-5">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">WooCommerce Order Notes</h3>
+                    
+                    {/* Notes List */}
+                    {selectedOrder.notes.length > 0 ? (
+                      <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
+                        {[...selectedOrder.notes]
+                          .sort((a, b) => parseNoteTimestamp(b.timestamp) - parseNoteTimestamp(a.timestamp))
+                          .map((n) => (
+                            <div key={n.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
+                              <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                                <span className={n.author.includes('Self') ? 'text-indigo-400' : 'text-slate-300'}>{n.author}</span>
+                                <span className="text-slate-500 font-mono">
+                                  {(() => {
+                                    const parsed = parseNoteTimestamp(n.timestamp);
+                                    if (parsed === 0) return 'N/A';
+                                    const d = new Date(parsed);
+                                    return d.toLocaleString([], {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    });
+                                  })()}
+                                </span>
+                              </div>
+                              <p className="text-slate-200 leading-relaxed font-medium">{n.message}</p>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 italic py-1">No notes logged for this service ticket yet.</p>
+                    )}
+
+                    {/* New Note Form */}
+                    {selectedOrder.technician_status !== 'Closed' && selectedOrder.technician_status !== 'Rejected' && (
+                      <div className="space-y-2.5">
+                        {/* Quick-tap Presets Row for order status notes */}
+                        <div className="flex flex-wrap gap-1.5 pb-0.5">
+                          {[
+                            'Job Started',
+                            'Parts Replaced',
+                            'Diagnostic Complete',
+                            'Waiting on Parts',
+                            'Waiting on Customer Approval',
+                            'Customer Not Available',
+                            'Installation Complete'
+                          ].map((phrase) => (
+                            <button
+                              key={phrase}
+                              type="button"
+                              disabled={isAddingNoteOrderId === selectedOrder.id}
+                              onClick={() => {
+                                setNewNoteText((prev) => {
+                                  const trimmed = prev.trim();
+                                  if (!trimmed) return phrase;
+                                  return `${trimmed} ${phrase}`;
+                                });
+                              }}
+                              className="text-[10px] font-semibold bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800/80 rounded-full px-2.5 py-1 transition-all cursor-pointer select-none active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {phrase}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex space-x-2">
+                          <input
+                            type="text"
+                            placeholder="Type customer or service updates..."
+                            value={newNoteText}
+                            onChange={(e) => setNewNoteText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleAddNote(selectedOrder.id);
+                              }
+                            }}
+                            disabled={isAddingNoteOrderId === selectedOrder.id}
+                            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                          <button
+                            disabled={!newNoteText.trim() || isAddingNoteOrderId === selectedOrder.id}
+                            onClick={() => handleAddNote(selectedOrder.id)}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-3 py-1.5 text-xs font-bold transition-all flex items-center justify-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isAddingNoteOrderId === selectedOrder.id ? (
+                              <>
+                                <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                                <span>Sending...</span>
+                              </>
+                            ) : (
+                              <span>Send</span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* CUSTOMER ADDRESS & MAP DISPATCH */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 border-t border-slate-800/80 pt-5">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Service Location & Address</h3>
                       <div className="flex items-center space-x-3 text-xs">
@@ -1839,105 +1939,7 @@ CREATE TABLE order_notes (
                     </div>
                   )}
 
-                  {/* NOTES PANEL (WOOCOMMERCE INTEGRATED) */}
-                  <div className="space-y-3 border-t border-slate-800/80 pt-5">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">WooCommerce Order Notes</h3>
-                    
-                    {/* Notes List */}
-                    {selectedOrder.notes.length > 0 ? (
-                      <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-                        {[...selectedOrder.notes]
-                          .sort((a, b) => parseNoteTimestamp(b.timestamp) - parseNoteTimestamp(a.timestamp))
-                          .map((n) => (
-                            <div key={n.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
-                              <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                                <span className={n.author.includes('Self') ? 'text-indigo-400' : 'text-slate-300'}>{n.author}</span>
-                                <span className="text-slate-500 font-mono">
-                                  {(() => {
-                                    const parsed = parseNoteTimestamp(n.timestamp);
-                                    if (parsed === 0) return 'N/A';
-                                    const d = new Date(parsed);
-                                    return d.toLocaleString([], {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    });
-                                  })()}
-                                </span>
-                              </div>
-                              <p className="text-slate-200 leading-relaxed font-medium">{n.message}</p>
-                            </div>
-                          ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500 italic py-1">No notes logged for this service ticket yet.</p>
-                    )}
 
-                    {/* New Note Form */}
-                    {selectedOrder.technician_status !== 'Closed' && selectedOrder.technician_status !== 'Rejected' && (
-                      <div className="space-y-2.5">
-                        {/* Quick-tap Presets Row for order status notes */}
-                        <div className="flex flex-wrap gap-1.5 pb-0.5">
-                          {[
-                            'Job Started',
-                            'Parts Replaced',
-                            'Diagnostic Complete',
-                            'Waiting on Parts',
-                            'Waiting on Customer Approval',
-                            'Customer Not Available',
-                            'Installation Complete'
-                          ].map((phrase) => (
-                            <button
-                              key={phrase}
-                              type="button"
-                              disabled={isAddingNoteOrderId === selectedOrder.id}
-                              onClick={() => {
-                                setNewNoteText((prev) => {
-                                  const trimmed = prev.trim();
-                                  if (!trimmed) return phrase;
-                                  return `${trimmed} ${phrase}`;
-                                });
-                              }}
-                              className="text-[10px] font-semibold bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800/80 rounded-full px-2.5 py-1 transition-all cursor-pointer select-none active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {phrase}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="flex space-x-2">
-                          <input
-                            type="text"
-                            placeholder="Type customer or service updates..."
-                            value={newNoteText}
-                            onChange={(e) => setNewNoteText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleAddNote(selectedOrder.id);
-                              }
-                            }}
-                            disabled={isAddingNoteOrderId === selectedOrder.id}
-                            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
-                          <button
-                            disabled={!newNoteText.trim() || isAddingNoteOrderId === selectedOrder.id}
-                            onClick={() => handleAddNote(selectedOrder.id)}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-3 py-1.5 text-xs font-bold transition-all flex items-center justify-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isAddingNoteOrderId === selectedOrder.id ? (
-                              <>
-                                <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
-                                <span>Sending...</span>
-                              </>
-                            ) : (
-                              <span>Send</span>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
 
                   {/* FINAL SIGNATURE AND COMPLETION PANEL */}
                   {selectedOrder.technician_status !== 'Closed' && selectedOrder.technician_status !== 'Rejected' && selectedOrder.technician_status !== 'Assigned' && (
