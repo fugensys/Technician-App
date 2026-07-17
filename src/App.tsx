@@ -226,6 +226,10 @@ export default function App() {
   const [tempSignature, setTempSignature] = useState<string | null>(null);
   const [finalCloseNote, setFinalCloseNote] = useState('');
   const [isClosingJobLoading, setIsClosingJobLoading] = useState(false);
+  const [isAcceptingOrderId, setIsAcceptingOrderId] = useState<number | null>(null);
+  const [isRejectingOrderId, setIsRejectingOrderId] = useState<number | null>(null);
+  const [isUpdatingStatusOrderId, setIsUpdatingStatusOrderId] = useState<number | null>(null);
+  const [isAddingNoteOrderId, setIsAddingNoteOrderId] = useState<number | null>(null);
   const [closeJobError, setCloseJobError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -403,7 +407,9 @@ export default function App() {
 
   // Accept Order Workflow
   const handleAcceptOrder = async (orderId: number) => {
+    if (isAcceptingOrderId === orderId) return;
     try {
+      setIsAcceptingOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -425,12 +431,16 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsAcceptingOrderId(null);
     }
   };
 
   // Reject Order Workflow
   const handleRejectOrder = async (orderId: number, reason: string) => {
+    if (isRejectingOrderId === orderId) return;
     try {
+      setIsRejectingOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -449,12 +459,16 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsRejectingOrderId(null);
     }
   };
 
   // Progress Status Update Workflow
   const handleUpdateStatus = async (orderId: number, status: JobStatus) => {
+    if (isUpdatingStatusOrderId === orderId) return;
     try {
+      setIsUpdatingStatusOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -469,13 +483,16 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsUpdatingStatusOrderId(null);
     }
   };
 
   // Add Note Workflow
   const handleAddNote = async (orderId: number) => {
-    if (!newNoteText.trim()) return;
+    if (!newNoteText.trim() || isAddingNoteOrderId === orderId) return;
     try {
+      setIsAddingNoteOrderId(orderId);
       const res = await apiFetch(`/api/orders/${orderId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -495,6 +512,8 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsAddingNoteOrderId(null);
     }
   };
 
@@ -1400,21 +1419,27 @@ CREATE TABLE order_notes (
                               {isAssigned && (
                                 <div className="flex md:flex-col items-center gap-2 w-full md:w-auto">
                                   <button
+                                    disabled={isAcceptingOrderId === o.id || isRejectingOrderId === o.id}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleAcceptOrder(o.id);
                                     }}
-                                    className="flex-1 md:w-28 bg-amber-600 hover:bg-amber-500 text-white rounded-xl px-3 py-2 text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95"
+                                    className="flex-1 md:w-28 bg-amber-600 hover:bg-amber-500 text-white rounded-xl px-3 py-2 text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span>Accept</span>
+                                    {isAcceptingOrderId === o.id ? (
+                                      <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <Check className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{isAcceptingOrderId === o.id ? 'Accepting...' : 'Accept'}</span>
                                   </button>
                                   <button
+                                    disabled={isAcceptingOrderId === o.id || isRejectingOrderId === o.id}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setRejectionModalId(o.id);
                                     }}
-                                    className="flex-1 md:w-28 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold transition-all flex items-center justify-center space-x-1.5 active:scale-95"
+                                    className="flex-1 md:w-28 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold transition-all flex items-center justify-center space-x-1.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     <X className="w-3.5 h-3.5" />
                                     <span>Reject</span>
@@ -1503,15 +1528,21 @@ CREATE TABLE order_notes (
                           <p className="text-xs text-slate-400 leading-relaxed">This job is currently assigned to you. Accept the ticket to unlock directions and work logging.</p>
                           <div className="flex gap-2">
                             <button
+                              disabled={isAcceptingOrderId === selectedOrder.id || isRejectingOrderId === selectedOrder.id}
                               onClick={() => handleAcceptOrder(selectedOrder.id)}
-                              className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md active:scale-95"
+                              className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <Check className="w-4 h-4" />
-                              <span>Accept Job</span>
+                              {isAcceptingOrderId === selectedOrder.id ? (
+                                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" />
+                              ) : (
+                                <Check className="w-4 h-4" />
+                              )}
+                              <span>{isAcceptingOrderId === selectedOrder.id ? 'Accepting Job...' : 'Accept Job'}</span>
                             </button>
                             <button
+                              disabled={isAcceptingOrderId === selectedOrder.id || isRejectingOrderId === selectedOrder.id}
                               onClick={() => setRejectionModalId(selectedOrder.id)}
-                              className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold py-2 px-3 rounded-xl text-xs transition-all active:scale-95"
+                              className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold py-2 px-3 rounded-xl text-xs transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               Reject
                             </button>
@@ -1520,7 +1551,7 @@ CREATE TABLE order_notes (
                       ) : (
                         <div className="space-y-4">
                           {/* Next Status Suggestion Slider / Button */}
-                          <div className="space-y-1.5">
+                           <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Update Current Status</label>
                             
                             <div className="flex flex-wrap gap-1.5">
@@ -1530,17 +1561,22 @@ CREATE TABLE order_notes (
                                 { status: 'On Hold', label: 'On Hold' },
                               ].map((step) => {
                                 const isActive = selectedOrder.technician_status === step.status;
+                                const isThisUpdating = isUpdatingStatusOrderId === selectedOrder.id;
                                 return (
                                   <button
                                     key={step.status}
+                                    disabled={isThisUpdating}
                                     onClick={() => handleUpdateStatus(selectedOrder.id, step.status as JobStatus)}
-                                    className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all ${
+                                    className={`text-xs px-3 py-1.5 rounded-lg font-bold border transition-all flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed ${
                                       isActive
                                         ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
                                         : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
                                     }`}
                                   >
-                                    {step.label}
+                                    {isThisUpdating && isActive && (
+                                      <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                                    )}
+                                    <span>{step.label}</span>
                                   </button>
                                 );
                               })}
@@ -1673,15 +1709,17 @@ CREATE TABLE order_notes (
                     {/* Notes List */}
                     {selectedOrder.notes.length > 0 ? (
                       <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
-                        {selectedOrder.notes.map((n) => (
-                          <div key={n.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
-                            <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                              <span className={n.author.includes('Self') ? 'text-indigo-400' : 'text-slate-300'}>{n.author}</span>
-                              <span className="text-slate-500 font-mono">{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {[...selectedOrder.notes]
+                          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                          .map((n) => (
+                            <div key={n.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 text-xs space-y-1">
+                              <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                                <span className={n.author.includes('Self') ? 'text-indigo-400' : 'text-slate-300'}>{n.author}</span>
+                                <span className="text-slate-500 font-mono">{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              <p className="text-slate-200 leading-relaxed font-medium">{n.message}</p>
                             </div>
-                            <p className="text-slate-200 leading-relaxed font-medium">{n.message}</p>
-                          </div>
-                        ))}
+                          ))}
                       </div>
                     ) : (
                       <p className="text-xs text-slate-500 italic py-1">No notes logged for this service ticket yet.</p>
@@ -1704,6 +1742,7 @@ CREATE TABLE order_notes (
                             <button
                               key={phrase}
                               type="button"
+                              disabled={isAddingNoteOrderId === selectedOrder.id}
                               onClick={() => {
                                 setNewNoteText((prev) => {
                                   const trimmed = prev.trim();
@@ -1711,7 +1750,7 @@ CREATE TABLE order_notes (
                                   return `${trimmed} ${phrase}`;
                                 });
                               }}
-                              className="text-[10px] font-semibold bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800/80 rounded-full px-2.5 py-1 transition-all cursor-pointer select-none active:scale-95"
+                              className="text-[10px] font-semibold bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800/80 rounded-full px-2.5 py-1 transition-all cursor-pointer select-none active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {phrase}
                             </button>
@@ -1724,13 +1763,27 @@ CREATE TABLE order_notes (
                             placeholder="Type customer or service updates..."
                             value={newNoteText}
                             onChange={(e) => setNewNoteText(e.target.value)}
-                            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleAddNote(selectedOrder.id);
+                              }
+                            }}
+                            disabled={isAddingNoteOrderId === selectedOrder.id}
+                            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <button
+                            disabled={!newNoteText.trim() || isAddingNoteOrderId === selectedOrder.id}
                             onClick={() => handleAddNote(selectedOrder.id)}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-3 py-1.5 text-xs font-bold transition-all"
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-3 py-1.5 text-xs font-bold transition-all flex items-center justify-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Send
+                            {isAddingNoteOrderId === selectedOrder.id ? (
+                              <>
+                                <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                                <span>Sending...</span>
+                              </>
+                            ) : (
+                              <span>Send</span>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -1888,10 +1941,14 @@ CREATE TABLE order_notes (
 
             <div className="flex space-x-2 pt-2">
               <button
+                disabled={isRejectingOrderId === rejectionModalId}
                 onClick={() => handleRejectOrder(rejectionModalId, rejectionReason)}
-                className="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl py-2 text-xs font-bold transition-all active:scale-95 shadow-md shadow-rose-950/20"
+                className="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl py-2 text-xs font-bold transition-all active:scale-95 shadow-md shadow-rose-950/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
               >
-                Confirm Reject
+                {isRejectingOrderId === rejectionModalId && (
+                  <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                )}
+                <span>Confirm Reject</span>
               </button>
               <button
                 onClick={() => setRejectionModalId(null)}
