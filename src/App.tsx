@@ -1690,7 +1690,7 @@ CREATE TABLE order_notes (
                     {/* New Note Form */}
                     {selectedOrder.technician_status !== 'Closed' && selectedOrder.technician_status !== 'Rejected' && (
                       <div className="space-y-2.5">
-                        {/* Quick-tap Presets Row */}
+                        {/* Quick-tap Presets Row for order status notes */}
                         <div className="flex flex-wrap gap-1.5 pb-0.5">
                           {[
                             'Job Started',
