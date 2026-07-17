@@ -1689,20 +1689,50 @@ CREATE TABLE order_notes (
 
                     {/* New Note Form */}
                     {selectedOrder.technician_status !== 'Closed' && selectedOrder.technician_status !== 'Rejected' && (
-                      <div className="flex space-x-2">
-                        <input
-                          type="text"
-                          placeholder="Type customer or service updates..."
-                          value={newNoteText}
-                          onChange={(e) => setNewNoteText(e.target.value)}
-                          className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500"
-                        />
-                        <button
-                          onClick={() => handleAddNote(selectedOrder.id)}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-3 py-1.5 text-xs font-bold transition-all"
-                        >
-                          Send
-                        </button>
+                      <div className="space-y-2.5">
+                        {/* Quick-tap Presets Row */}
+                        <div className="flex flex-wrap gap-1.5 pb-0.5">
+                          {[
+                            'Job Started',
+                            'Parts Replaced',
+                            'Diagnostic Complete',
+                            'Waiting on Parts',
+                            'Waiting on Customer Approval',
+                            'Customer Not Available',
+                            'Installation Complete'
+                          ].map((phrase) => (
+                            <button
+                              key={phrase}
+                              type="button"
+                              onClick={() => {
+                                setNewNoteText((prev) => {
+                                  const trimmed = prev.trim();
+                                  if (!trimmed) return phrase;
+                                  return `${trimmed} ${phrase}`;
+                                });
+                              }}
+                              className="text-[10px] font-semibold bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800/80 rounded-full px-2.5 py-1 transition-all cursor-pointer select-none active:scale-95"
+                            >
+                              {phrase}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex space-x-2">
+                          <input
+                            type="text"
+                            placeholder="Type customer or service updates..."
+                            value={newNoteText}
+                            onChange={(e) => setNewNoteText(e.target.value)}
+                            className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-500"
+                          />
+                          <button
+                            onClick={() => handleAddNote(selectedOrder.id)}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-3 py-1.5 text-xs font-bold transition-all"
+                          >
+                            Send
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
