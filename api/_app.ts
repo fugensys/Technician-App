@@ -117,10 +117,23 @@ async function ensureSupabaseTechniciansSeeded(): Promise<boolean> {
         });
       } else {
         const isPlaintextMatch = existing.password_hash === t.password;
-        const isBcryptMatch = bcrypt.compareSync(t.password, existing.password_hash);
+        let isBcryptMatch = false;
+        try {
+          isBcryptMatch = bcrypt.compareSync(t.password, existing.password_hash);
+        } catch (e) {}
         
-        if (!isPlaintextMatch && !isBcryptMatch) {
-          console.log(`[Supabase Seed] Updating password/details for technician: ${t.email}`);
+        if (isPlaintextMatch) {
+          console.log(`[Supabase Seed] Upgrading plaintext password to bcrypt hash for: ${t.email}`);
+          await supabaseAdmin
+            .from('technicians')
+            .update({
+              password_hash: expectedHash,
+              name: t.name,
+              phone: t.phone
+            })
+            .eq('email', t.email);
+        } else if (!isBcryptMatch) {
+          console.log(`[Supabase Seed] Updating incorrect password/details to bcrypt hash for: ${t.email}`);
           await supabaseAdmin
             .from('technicians')
             .update({

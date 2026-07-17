@@ -728,38 +728,7 @@ export default function App() {
               </button>
             </form>
 
-            {(import.meta as any).env?.DEV && (
-              <div className="border-t border-slate-800/80 pt-4">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-3 text-center">Authorized Sandbox Users (DEV ONLY)</span>
-                <div className="space-y-2.5">
-                  {[
-                    { email: 'ereshmb@gmail.com', pass: '10001', name: 'Eresh M B' },
-                    { email: 'decentsachin.143@gmail.com', pass: '10002', name: 'Sachin' },
-                    { email: 'nidhishri767@gmail.com', pass: '10003', name: 'Nidhishri' },
-                    { email: 'fugensys@gmail.com', pass: '10004', name: 'Fugensys Admin' }
-                  ].map((u) => (
-                    <button
-                      key={u.email}
-                      type="button"
-                      onClick={() => {
-                        setLoginEmail(u.email);
-                        setLoginPassword(u.pass);
-                        setLoginError(null);
-                      }}
-                      className="w-full text-left bg-slate-900 hover:bg-slate-850 p-2.5 rounded-xl border border-slate-800/60 transition-all hover:border-slate-700 flex items-center justify-between text-xs group"
-                    >
-                      <div>
-                        <p className="font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">{u.name}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">{u.email}</p>
-                      </div>
-                      <span className="text-[10px] font-mono bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">
-                        Pass: {u.pass}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+
 
             <div className="border-t border-slate-800/80 pt-4 flex flex-col items-center space-y-1 text-center">
               <div className="flex items-center space-x-1.5">
