@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
-import { WooCommerceOrder, JobStatus, OrderNote, MaterialItem } from '../src/types';
+import { WooCommerceOrder, JobStatus, OrderNote, MaterialItem } from '../src/types.js';
 
 dotenv.config();
 
