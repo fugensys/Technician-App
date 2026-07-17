@@ -604,16 +604,25 @@ export default function App() {
         setLoginEmail('');
         setLoginPassword('');
       } else {
-        let errMsg = 'Invalid technician credentials.';
+        let errMsg = `Server returned error status ${res.status}.`;
         try {
-          const errData = await res.json();
-          errMsg = errData.error || errMsg;
+          const text = await res.text();
+          try {
+            const errData = JSON.parse(text);
+            errMsg = errData.error || errMsg;
+          } catch {
+            if (text.includes('<!DOCTYPE') || text.includes('<html>')) {
+              errMsg = `Authentication Failed (${res.status}): Server returned an HTML error page. This can occur if the server is starting up, deploying, or blocked by a proxy. Please reload the page.`;
+            } else if (text.trim()) {
+              errMsg = `Authentication Failed (${res.status}): ${text.substring(0, 150)}`;
+            }
+          }
         } catch (e) {}
         setLoginError(errMsg);
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      setLoginError(`Authentication error: ${err.message || err}`);
+      setLoginError(`Network/Connection Error: ${err.message || err}. Please ensure the server is active.`);
     } finally {
       setLoggingIn(false);
     }
