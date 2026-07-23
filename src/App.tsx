@@ -37,7 +37,8 @@ import {
   Package,
   Wrench,
   Wifi,
-  WifiOff
+  WifiOff,
+  UserCheck
 } from 'lucide-react';
 import { WooCommerceOrder, JobStatus, OrderNote, MaterialItem, AppStats } from './types';
 import SignaturePad from './components/SignaturePad';
@@ -243,10 +244,21 @@ export default function App() {
     }
   };
   
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
+
+  // Registration state
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regRole, setRegRole] = useState('Technician');
+  const [regError, setRegError] = useState<string | null>(null);
+  const [regSuccess, setRegSuccess] = useState<string | null>(null);
+  const [registering, setRegistering] = useState(false);
   
   // Technician local statuses
   const [technicianStatus, setTechnicianStatus] = useState<'Online' | 'Offline'>('Online');
@@ -814,6 +826,47 @@ export default function App() {
     }
   };
 
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setRegistering(true);
+      setRegError(null);
+      setRegSuccess(null);
+
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: regName,
+          email: regEmail,
+          password: regPassword,
+          phone: regPhone,
+          role: regRole
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRegSuccess(data.message || 'Account created successfully!');
+        if (data.user) {
+          setCurrentUser(data.user);
+          localStorage.setItem('ac_tech_user', JSON.stringify(data.user));
+        }
+        setRegName('');
+        setRegEmail('');
+        setRegPassword('');
+        setRegPhone('');
+      } else {
+        setRegError(data.error || 'Failed to create account.');
+      }
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      setRegError(`Network Error: ${err.message || err}`);
+    } finally {
+      setRegistering(false);
+    }
+  };
+
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('ac_tech_user');
@@ -898,16 +951,48 @@ export default function App() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">5-Digit Password</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Passcode / Password</label>
                 <input
                   type="password"
                   required
-                  maxLength={5}
                   placeholder="•••••"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
                 />
+              </div>
+
+              {/* Quick Select Authorized Accounts */}
+              <div className="pt-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Quick Sign-In Accounts</label>
+                <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                  {[
+                    { name: 'Priya', email: 'priya@gmail.com', pass: '10005', role: 'Technician' },
+                    { name: 'Fugensys Admin', email: 'fugensys@gmail.com', pass: '10004', role: 'Technician' },
+                    { name: 'Eresh M B', email: 'ereshmb@gmail.com', pass: '10001', role: 'Technician' },
+                    { name: 'Sachin', email: 'decentsachin.143@gmail.com', pass: '10002', role: 'Technician' },
+                    { name: 'Nidhishri', email: 'nidhishri767@gmail.com', pass: '10003', role: 'Technician' },
+                  ].map((acc) => (
+                    <button
+                      key={acc.email}
+                      type="button"
+                      onClick={() => {
+                        setLoginEmail(acc.email);
+                        setLoginPassword(acc.pass);
+                        setLoginError(null);
+                      }}
+                      className="w-full bg-slate-900/90 hover:bg-slate-800 border border-slate-800 p-2 rounded-xl text-left flex items-center justify-between transition-all group active:scale-[0.99]"
+                    >
+                      <div className="truncate">
+                        <div className="text-xs font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors">{acc.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono truncate">{acc.email}</div>
+                      </div>
+                      <span className="text-[10px] bg-slate-800 text-indigo-400 font-mono px-2 py-0.5 rounded-md border border-slate-700/60 group-hover:border-indigo-500/40 flex-shrink-0 ml-2">
+                        Pass: {acc.pass}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <button
@@ -1304,6 +1389,111 @@ export default function App() {
                           </div>
                         </div>
                       )}
+                    </div>
+
+                    {/* Create Additional Technician Account */}
+                    <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 space-y-3">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
+                          <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Add New Technician Account</span>
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Register a new field technician or administrator account directly into Supabase database.</p>
+                      </div>
+
+                      {regError && (
+                        <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl flex items-start space-x-2 animate-shake">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>{regError}</span>
+                        </div>
+                      )}
+
+                      {regSuccess && (
+                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs rounded-xl flex items-start space-x-2 animate-fadeIn">
+                          <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 text-emerald-400" />
+                          <span>{regSuccess}</span>
+                        </div>
+                      )}
+
+                      <form onSubmit={handleRegister} className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Full Name</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Ramesh Kumar"
+                            value={regName}
+                            onChange={(e) => setRegName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Email Address</label>
+                          <input
+                            type="email"
+                            required
+                            placeholder="tech@company.com"
+                            value={regEmail}
+                            onChange={(e) => setRegEmail(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Phone Number</label>
+                          <input
+                            type="tel"
+                            placeholder="+1 (555) 000-0000"
+                            value={regPhone}
+                            onChange={(e) => setRegPhone(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Password / Passcode</label>
+                          <input
+                            type="password"
+                            required
+                            placeholder="e.g. 10006"
+                            value={regPassword}
+                            onChange={(e) => setRegPassword(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 flex items-center justify-between pt-2">
+                          <select
+                            value={regRole}
+                            onChange={(e) => setRegRole(e.target.value)}
+                            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="Technician">Field Technician</option>
+                            <option value="Senior Technician">Senior Technician</option>
+                            <option value="Lead Inspector">Lead Inspector</option>
+                            <option value="Administrator">Administrator</option>
+                          </select>
+
+                          <button
+                            type="submit"
+                            disabled={registering}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center space-x-1.5 transition-all shadow-md active:scale-95 disabled:opacity-55"
+                          >
+                            {registering ? (
+                              <>
+                                <span className="inline-block w-3.5 h-3.5 border-2 border-indigo-200 border-t-transparent rounded-full animate-spin mr-1" />
+                                <span>Registering...</span>
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck className="w-3.5 h-3.5" />
+                                <span>Create Technician Account</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </form>
                     </div>
 
                     {/* Supabase Test */}

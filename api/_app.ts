@@ -89,7 +89,8 @@ async function ensureSupabaseTechniciansSeeded(): Promise<boolean> {
       { email: 'ereshmb@gmail.com', password: '10001', name: 'Eresh M B', phone: '+1 (555) 012-1001', role: 'Technician' },
       { email: 'decentsachin.143@gmail.com', password: '10002', name: 'Sachin', phone: '+1 (555) 012-1002', role: 'Technician' },
       { email: 'nidhishri767@gmail.com', password: '10003', name: 'Nidhishri', phone: '+1 (555) 012-1003', role: 'Technician' },
-      { email: 'fugensys@gmail.com', password: '10004', name: 'Fugensys Admin', phone: '+1 (555) 012-1004', role: 'Technician' }
+      { email: 'fugensys@gmail.com', password: '10004', name: 'Fugensys Admin', phone: '+1 (555) 012-1004', role: 'Technician' },
+      { email: 'priya@gmail.com', password: '10005', name: 'Priya', phone: '+1 (555) 012-1005', role: 'Technician' }
     ];
 
     for (const t of techniciansToSeed) {
@@ -564,6 +565,114 @@ app.post('/api/login', async (req, res) => {
   } catch (err: any) {
     console.error('[Auth Error] Secure login validation failed:', err.message || err);
     return res.status(500).json({ error: `Authentication failed due to database or server exception: ${err.message || err}` });
+  }
+});
+
+// API: Register / Create New Technician Account
+app.post('/api/register', async (req, res) => {
+  const { email, password, name, phone, role } = req.body;
+  if (!email || !password || !name) {
+    return res.status(400).json({ error: 'Email, name, and password are required.' });
+  }
+
+  const emailTrim = email.trim().toLowerCase();
+  const passwordTrim = String(password).trim();
+  const nameTrim = name.trim();
+  const phoneTrim = phone ? String(phone).trim() : '';
+  const userRole = role ? String(role).trim() : 'Technician';
+
+  // Guard against unconfigured Supabase database integration
+  if (!isSupabaseConfigured) {
+    // Generate signed JWT for sandbox/simulated mode
+    const sessionToken = jwt.sign(
+      {
+        id: Date.now(),
+        email: emailTrim,
+        name: nameTrim,
+        role: userRole
+      },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Account created successfully in local sandbox mode.',
+      user: {
+        email: emailTrim,
+        name: nameTrim,
+        role: userRole,
+        token: sessionToken
+      }
+    });
+  }
+
+  try {
+    // Seed default technician list if missing
+    await ensureSupabaseTechniciansSeeded();
+
+    // Check if email already exists
+    const { data: existingTech, error: queryErr } = await supabaseAdmin
+      .from('technicians')
+      .select('id, email')
+      .eq('email', emailTrim)
+      .maybeSingle();
+
+    if (queryErr) {
+      console.error('[Auth Register Query Error]:', queryErr);
+      return res.status(500).json({ error: `Database error checking existing account: ${queryErr.message}` });
+    }
+
+    if (existingTech) {
+      return res.status(400).json({ error: 'An account with this email address already exists. Please sign in instead.' });
+    }
+
+    // Hash password with bcrypt
+    const passwordHash = bcrypt.hashSync(passwordTrim, 10);
+
+    // Insert new technician record
+    const { data: newTech, error: insertErr } = await supabaseAdmin
+      .from('technicians')
+      .insert({
+        email: emailTrim,
+        password_hash: passwordHash,
+        name: nameTrim,
+        phone: phoneTrim,
+        role: userRole
+      })
+      .select('*')
+      .single();
+
+    if (insertErr) {
+      console.error('[Auth Register Insert Error]:', insertErr);
+      return res.status(500).json({ error: `Failed to create technician account: ${insertErr.message}` });
+    }
+
+    // Generate signed session JWT token
+    const sessionToken = jwt.sign(
+      {
+        id: newTech.id,
+        email: newTech.email,
+        name: newTech.name,
+        role: newTech.role || 'Technician'
+      },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Technician account created successfully.',
+      user: {
+        email: newTech.email,
+        name: newTech.name,
+        role: newTech.role || 'Technician',
+        token: sessionToken
+      }
+    });
+  } catch (err: any) {
+    console.error('[Auth Register Exception]:', err.message || err);
+    return res.status(500).json({ error: `Account registration failed: ${err.message || err}` });
   }
 });
 
